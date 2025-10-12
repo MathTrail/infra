@@ -8,8 +8,7 @@ start:
         --mount-string="/var/run/docker.sock:/var/run/docker.sock" \
         --mount
 
-install:
-    # Install Dapr runtime
+deploy:
     helm upgrade --install dapr ./helm/external/dapr/dapr-1.16.1.tgz \
         --namespace dapr-system \
         --create-namespace \

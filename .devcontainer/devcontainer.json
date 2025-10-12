@@ -1,6 +1,7 @@
 {
     "name": "MathTrail Infrastructure DevContainer",
-    "workspaceFolder": "/workspace",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+    "updateContentCommand": "sudo chmod 666 /var/run/docker.sock",
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2": {},
         "ghcr.io/devcontainers/features/kubectl-helm-minikube:1.2.2": {},
@@ -18,5 +19,21 @@
     ],
     "remoteEnv": {
         "MINIKUBE_HOME": "${containerWorkspaceFolder}/.minikube"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-azuretools.vscode-docker",
+                "ms-kubernetes-tools.vscode-kubernetes-tools",
+                "ms-kubernetes.helm",
+                "redhat.vscode-yaml",
+                "eamodio.gitlens",
+				"sclu1034.justfile",
+				"vscode-icons-team.vscode-icons",
+				"waderyan.gitblame",
+				"donjayamanne.githistory",
+				"Tim-Koehler.helm-intellisense"
+            ]
+        }
     }
 }
