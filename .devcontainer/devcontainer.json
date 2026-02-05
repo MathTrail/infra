@@ -1,24 +1,21 @@
 {
     "name": "MathTrail Infrastructure DevContainer",
-    "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-    "updateContentCommand": "sudo chmod 666 /var/run/docker.sock",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
     "features": {
-        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-        "ghcr.io/devcontainers/features/kubectl-helm-minikube:1.2.2": {},
-        "ghcr.io/dapr/cli/dapr-cli:0": {},
-        "ghcr.io/eitsupi/devcontainer-features/just:0": {}
+        "ghcr.io/devcontainers/features/docker-in-docker:2.14.0": {},
+        "ghcr.io/devcontainers/features/kubectl-helm-minikube:1.2.2": {
+            "helm": "4.1.0",
+            "version": "1.35.0",
+            "minikube": "none"
+        },
+        "ghcr.io/eitsupi/devcontainer-features/just:0.1.1": {},
+        "ghcr.io/dapr/cli/dapr-cli:0": {}
     },
-    "runArgs": [
-        "--cap-add=SYS_PTRACE",
-        "--security-opt",
-        "seccomp=unconfined",
-        "--network=host"
-    ],
     "mounts": [
-        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+        "source=${localEnv:HOME}/.kube,target=/home/vscode/.kube,type=bind,consistency=cached"
     ],
     "remoteEnv": {
-        "MINIKUBE_HOME": "${containerWorkspaceFolder}/.minikube"
+        "KUBECONFIG": "/home/vscode/.kube/k3d-mathtrail-dev.yaml"
     },
     "customizations": {
         "vscode": {
@@ -35,5 +32,6 @@
 				"Tim-Koehler.helm-intellisense"
             ]
         }
-    }
+    },
+    "postCreateCommand": "bash -c 'set -e && mkdir -p /home/vscode/.kube && chmod 700 /home/vscode/.kube && dapr init && echo \"Checking cluster connection...\" && kubectl cluster-info 2>/dev/null && echo \"✅ Connected to K3d cluster\" || echo \"⚠️  Cluster not accessible. Run \\\"just create\\\" in mathtrail-infrastructure-local-k3d on host first\"'"
 }

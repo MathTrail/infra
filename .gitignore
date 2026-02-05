@@ -1,1 +1,15 @@
+# Local Kubernetes runtime directories
+.k3d/
 .minikube/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Local environment files
+.env.local
+*.local
+
