@@ -33,5 +33,5 @@
             ]
         }
     },
-    "postCreateCommand": "bash -c 'set -e && mkdir -p /home/vscode/.kube && chmod 700 /home/vscode/.kube && dapr init && echo \"Checking cluster connection...\" && kubectl cluster-info 2>/dev/null && echo \"✅ Connected to K3d cluster\" || echo \"⚠️  Cluster not accessible. Run \\\"just create\\\" in mathtrail-infrastructure-local-k3d on host first\"'"
+    "postCreateCommand": "bash -c 'set -e && mkdir -p /home/vscode/.kube && chmod 700 /home/vscode/.kube && just deploy && echo \"Checking cluster connection...\" && kubectl cluster-info 2>/dev/null && echo \"✅ Connected to K3d cluster\" || echo \"⚠️  Cluster not accessible. Run \\\"just create\\\" in mathtrail-infrastructure-local-k3d on host first\"'"
 }
