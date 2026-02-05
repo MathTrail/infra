@@ -1,6 +1,5 @@
 # Local Kubernetes runtime directories
 .k3d/
-.minikube/
 
 # OS
 .DS_Store
