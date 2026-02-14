@@ -13,7 +13,7 @@ deploy:
   helm:
     releases:
       - name: dapr
-        repo: https://MathTrail.github.io/mathtrail-charts/charts
+        repo: https://MathTrail.github.io/charts/charts
         remoteChart: dapr
         namespace: dapr-system
         createNamespace: true
