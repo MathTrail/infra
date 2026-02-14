@@ -1,4 +1,0 @@
-apiVersion: v2
-name: base-chart
-version: 0.1.0
-description: Base Helm chart for MathTrail microservices
