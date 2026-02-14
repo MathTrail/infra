@@ -1,0 +1,20 @@
+﻿apiVersion: skaffold/v4beta12
+kind: Config
+metadata:
+  name: mathtrail-infra
+
+manifests:
+  rawYaml:
+    - dapr/components.yaml
+
+deploy:
+  kubectl:
+    defaultNamespace: mathtrail
+  helm:
+    releases:
+      - name: dapr
+        repo: https://MathTrail.github.io/charts/charts
+        remoteChart: dapr
+        namespace: dapr-system
+        createNamespace: true
+        wait: true

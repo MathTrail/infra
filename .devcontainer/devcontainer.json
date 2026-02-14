@@ -1,0 +1,38 @@
+{
+    "name": "MathTrail Infrastructure DevContainer",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2.14.0": {},
+        "ghcr.io/devcontainers/features/kubectl-helm-minikube:1.2.2": {
+            "helm": "4.1.0",
+            "version": "1.35.0",
+            "minikube": "none"
+        },
+        "ghcr.io/eitsupi/devcontainer-features/just:0.1.1": {},
+        "ghcr.io/dapr/cli/dapr-cli:0": {}
+    },
+    "mounts": [
+        "source=${localEnv:HOME}/.kube,target=/home/vscode/.kube,type=bind,consistency=cached"
+    ],
+    "remoteEnv": {
+        "KUBECONFIG": "/home/vscode/.kube/k3d-mathtrail-dev.yaml"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-azuretools.vscode-docker",
+                "ms-kubernetes-tools.vscode-kubernetes-tools",
+                "ms-kubernetes.helm",
+                "redhat.vscode-yaml",
+                "eamodio.gitlens",
+				"sclu1034.justfile",
+				"vscode-icons-team.vscode-icons",
+				"waderyan.gitblame",
+				"donjayamanne.githistory",
+				"Tim-Koehler.helm-intellisense",
+				"anthropic.claude-code"
+            ]
+        }
+    },
+    "postStartCommand": "bash -c 'set -e && mkdir -p /home/vscode/.kube && chmod 700 /home/vscode/.kube && echo \"Checking cluster connection...\" && kubectl cluster-info 2>/dev/null && echo \"Connected to K3d cluster\" || echo \"Cluster not accessible. Run just create in mathtrail-infra-local-k3s on host first\"'"
+}
