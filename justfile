@@ -1,2 +1,5 @@
 ﻿deploy:
-    skaffold deploy -f skaffold.yaml
+    skaffold deploy
+
+uninstall:
+    skaffold delete
