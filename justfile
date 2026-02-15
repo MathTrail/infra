@@ -1,5 +1,5 @@
 ﻿deploy:
     skaffold deploy
 
-uninstall:
+delete:
     skaffold delete
