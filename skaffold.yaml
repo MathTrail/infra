@@ -5,6 +5,7 @@ metadata:
 
 manifests:
   rawYaml:
+    - dapr/namespace.yaml
     - dapr/components.yaml
 
 deploy:
