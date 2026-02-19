@@ -10,7 +10,7 @@ manifests:
 
 deploy:
   kubectl:
-    defaultNamespace: mathtrail
+    defaultNamespace: ${NAMESPACE}
   helm:
     releases:
       - name: dapr
