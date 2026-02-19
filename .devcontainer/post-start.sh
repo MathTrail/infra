@@ -5,8 +5,14 @@ set -e
 chezmoi init --source /workspaces/core --force
 chezmoi apply --source /workspaces/core --force
 
+# Load shared env vars and auto-export them (set -a) so they're available to subprocesses
+set -a
 source ~/.env.shared
+set +a
 REGISTRY_HOST="${REGISTRY%:*}"
+
+# Create skaffold.env symlink so Skaffold picks up shared variables
+ln -sf "$HOME/.env.shared" /workspaces/infra/skaffold.env
 
 mkdir -p /home/vscode/.kube
 chmod 700 /home/vscode/.kube

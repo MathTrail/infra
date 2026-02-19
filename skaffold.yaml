@@ -5,15 +5,16 @@ metadata:
 
 manifests:
   rawYaml:
+    - dapr/namespace.yaml
     - dapr/components.yaml
 
 deploy:
   kubectl:
-    defaultNamespace: ${NAMESPACE}
+    defaultNamespace: "{{.NAMESPACE}}"
   helm:
     releases:
       - name: dapr
-        repo: ${CHARTS_REPO}
+        repo: "{{.CHARTS_REPO}}"
         remoteChart: dapr
         namespace: dapr-system
         createNamespace: true

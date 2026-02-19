@@ -9,3 +9,6 @@ deploy:
 # Delete all deployed infrastructure components from the cluster
 delete:
     skaffold delete
+    # Helm does not remove CRDs on uninstall by design, so clean them up manually
+    -kubectl delete crds -l app.kubernetes.io/part-of=dapr
+    -kubectl delete namespace dapr-system
