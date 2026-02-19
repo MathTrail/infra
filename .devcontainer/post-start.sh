@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Initialize chezmoi with the workspace as its source directory and apply templates
+chezmoi init --source /workspaces/core --force
+chezmoi apply --source /workspaces/core --force
+
 source ~/.env.shared
 REGISTRY_HOST="${REGISTRY%:*}"
 

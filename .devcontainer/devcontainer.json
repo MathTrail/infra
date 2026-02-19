@@ -3,7 +3,10 @@
     "build": {
         "dockerfile": "Dockerfile"
     },
+    "workspaceMount": "source=${localWorkspaceFolder}/..,target=/workspaces,type=bind,consistency=cached",
+    "workspaceFolder": "/workspaces/infra",
     "features": {
+        "ghcr.io/prulloac/devcontainer-features/chezmoi:1": {},
         "ghcr.io/devcontainers/features/docker-in-docker:2.14.0": {},
         "ghcr.io/devcontainers/features/kubectl-helm-minikube:1.2.2": {
             "helm": "4.1.0",
