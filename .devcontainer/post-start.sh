@@ -1,18 +1,14 @@
 #!/bin/bash
 set -e
 
-# Initialize chezmoi with the workspace as its source directory and apply templates
-chezmoi init --source /workspaces/core --force
-chezmoi apply --source /workspaces/core --force
-
-# Load shared env vars and auto-export them (set -a) so they're available to subprocesses
+# Load platform env for shell variables used below
 set -a
-source ~/.env.shared
+source /etc/mathtrail/platform.env
 set +a
 REGISTRY_HOST="${REGISTRY%:*}"
 
 # Create skaffold.env symlink so Skaffold picks up shared variables
-ln -sf "$HOME/.env.shared" /workspaces/infra/skaffold.env
+ln -sf /etc/mathtrail/platform.env /workspaces/infra/skaffold.env
 
 mkdir -p /home/vscode/.kube
 chmod 700 /home/vscode/.kube
