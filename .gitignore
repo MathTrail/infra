@@ -11,4 +11,5 @@
 # Local environment files
 .env.local
 *.local
+skaffold.env
 

@@ -1,0 +1,23 @@
+server:
+  dev:
+    enabled: true
+    devRootToken: "root"
+  standalone:
+    enabled: false
+  ha:
+    enabled: false
+  authDelegator:
+    enabled: true  # Binds Vault SA as TokenReview delegate (required for Kubernetes auth method)
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+injector:
+  enabled: false  # Delivery is handled by ESO, not the sidecar injector
+
+ui:
+  enabled: false

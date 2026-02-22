@@ -3,6 +3,8 @@
     "build": {
         "dockerfile": "Dockerfile"
     },
+    "workspaceMount": "source=${localWorkspaceFolder}/..,target=/workspaces,type=bind,consistency=cached",
+    "workspaceFolder": "/workspaces/infra",
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2.14.0": {},
         "ghcr.io/devcontainers/features/kubectl-helm-minikube:1.2.2": {
@@ -14,11 +16,12 @@
         "ghcr.io/dapr/cli/dapr-cli:0": {}
     },
     "mounts": [
-        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.kube,target=/home/vscode/.kube-host,type=bind,consistency=cached"
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.kube,target=/home/vscode/.kube-host,type=bind,consistency=cached,readonly"
     ],
-    "remoteEnv": {
-        "KUBECONFIG": "/home/vscode/.kube/k3d-mathtrail-dev.yaml"
-    },
+    "runArgs": [
+        "--add-host=host.docker.internal:host-gateway",
+        "--add-host=k3d-mathtrail-registry.localhost:host-gateway"
+    ],
     "customizations": {
         "vscode": {
             "extensions": [

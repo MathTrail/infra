@@ -1,7 +1,22 @@
-﻿apiVersion: skaffold/v4beta12
+﻿apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: mathtrail-infra
+
+requires:
+  - configs:
+      - dapr
+      - vault
+      - external-secrets
+      - telepresence
+  - configs:
+      - vault-cluster-init
+
+---
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: dapr
 
 manifests:
   rawYaml:
@@ -10,12 +25,84 @@ manifests:
 
 deploy:
   kubectl:
-    defaultNamespace: mathtrail
+    defaultNamespace: "{{.NAMESPACE}}"
   helm:
     releases:
       - name: dapr
-        repo: https://MathTrail.github.io/charts/charts
+        repo: "{{.CHARTS_REPO}}"
         remoteChart: dapr
         namespace: dapr-system
         createNamespace: true
         wait: true
+
+---
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: vault
+
+deploy:
+  helm:
+    releases:
+      - name: vault
+        repo: "{{.CHARTS_REPO}}"
+        remoteChart: vault
+        namespace: vault
+        createNamespace: true
+        valuesFiles:
+          - values/vault-values.yaml
+        wait: true
+
+---
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: external-secrets
+
+deploy:
+  helm:
+    releases:
+      - name: external-secrets
+        repo: "{{.CHARTS_REPO}}"
+        remoteChart: external-secrets
+        namespace: external-secrets
+        createNamespace: true
+        valuesFiles:
+          - values/external-secrets-values.yaml
+        wait: true
+
+---
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: telepresence
+
+deploy:
+  helm:
+    releases:
+      - name: traffic-manager
+        repo: "{{.CHARTS_REPO}}"
+        remoteChart: telepresence-oss
+        namespace: ambassador
+        createNamespace: true
+        valuesFiles:
+          - values/telepresence-values.yaml
+        wait: true
+
+---
+# vault-cluster-init configures cluster-wide Vault settings:
+# Kubernetes auth, Database Secrets Engine, ESO policy/role, and ClusterSecretStore.
+# Deployed after vault + external-secrets are ready.
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: vault-cluster-init
+
+manifests:
+  rawYaml:
+    - manifests/vault-cluster-init-job.yaml
+    - manifests/cluster-secret-store.yaml
+
+deploy:
+  kubectl:
+    defaultNamespace: vault

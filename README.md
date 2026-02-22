@@ -1,30 +1,29 @@
 # mathtrail-infra
-Umbrella infrastructure repository — manages global cluster resources shared across all services.
+Global cluster infrastructure — deploys Dapr runtime and shared Dapr components.
 
-## Mission & Responsibilities
-- Deploy Dapr runtime to the cluster
-- Manage HashiCorp Vault (secrets backend)
-- Deploy ArgoCD (GitOps controller)
-- Configure cluster-wide Ingress
-- Manage External Secrets Operator (ESO)
-- Deploy cert-manager for TLS
+## What This Repo Deploys
+- **Dapr runtime** — Helm chart into `dapr-system` namespace
+- **Dapr components** — shared components (statestore) into the application namespace
 
 ## Tech Stack
 - **Orchestration**: Helm, Skaffold
-- **GitOps**: ArgoCD
-- **Secrets**: HashiCorp Vault + ESO
 - **Service Mesh**: Dapr
 - **Task Runner**: Just
 
-## Architecture
-This repo is the "umbrella" for global resources that don't belong to any single service. It deploys cluster-level components that all services depend on.
+## Repository Structure
+```
+dapr/
+  components.yaml     # shared Dapr components (statestore)
+skaffold.yaml         # Skaffold config (module: mathtrail-infra)
+justfile              # deploy / delete recipes
+```
 
 ## Prerequisites
 
 ### Required on Host
 - **Docker** — container runtime
 
-See the [main MathTrail repository](../mathtrail/README.md) for complete setup instructions.
+See the [core repository](../core/README.md) for complete setup instructions.
 
 ### Included in DevContainer
 - **Helm** — Kubernetes package manager
@@ -32,13 +31,16 @@ See the [main MathTrail repository](../mathtrail/README.md) for complete setup i
 - **Dapr CLI** — Dapr runtime CLI
 - **Just** — task runner for common commands
 
-## Development
-- `just deploy` — Deploy Dapr to cluster
-- Uses mathtrail-charts Helm repo for packaged charts
+## Usage
+```sh
+just deploy    # Deploy Dapr + namespace + components
+just delete    # Remove everything
+```
 
 ## DevContainer Support
-A DevContainer configuration is available. Inside the container: kubectl, Helm, Docker CLI, Dapr CLI, Just.
+A DevContainer configuration is included. Inside the container: kubectl, Helm, Docker CLI, Dapr CLI, Just.
 
 ## Troubleshooting
 - Check cluster connectivity: `kubectl cluster-info`
-- Verify namespaces: `kubectl get namespaces`
+- Verify Dapr: `kubectl get pods -n dapr-system`
+- Verify namespace: `kubectl get ns mathtrail`
