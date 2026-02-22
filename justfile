@@ -12,3 +12,6 @@ delete:
     # Helm does not remove CRDs on uninstall by design, so clean them up manually
     -kubectl delete crds -l app.kubernetes.io/part-of=dapr
     -kubectl delete namespace dapr-system
+    -kubectl delete namespace vault
+    -kubectl delete namespace external-secrets
+    -kubectl delete namespace ambassador
