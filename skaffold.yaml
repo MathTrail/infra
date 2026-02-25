@@ -4,13 +4,18 @@ metadata:
   name: mathtrail-infra
 
 requires:
+  # Phase 1: Deploy operators and controllers (parallel).
   - configs:
       - dapr
-      - vault
+      - vault-operator
       - external-secrets
       - telepresence
+  # Phase 2: Deploy Vault instance CR (operator must be ready first).
   - configs:
-      - vault-cluster-init
+      - vault-instance
+  # Phase 3: Deploy ClusterSecretStores (Vault must be running + configured first).
+  - configs:
+      - vault-secret-stores
 
 ---
 apiVersion: skaffold/v4beta13
@@ -22,6 +27,7 @@ manifests:
   rawYaml:
     - dapr/namespace.yaml
     - dapr/components.yaml
+    - dapr/vault-secret-store.yaml
 
 deploy:
   kubectl:
@@ -36,22 +42,60 @@ deploy:
         wait: true
 
 ---
+# Bank-Vaults Operator — manages Vault CRs (init, unseal, configure).
+# Must be deployed before the Vault instance CR.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: vault
+  name: vault-operator
 
 deploy:
   helm:
     releases:
-      - name: vault
-        repo: "{{.CHARTS_REPO}}"
-        remoteChart: vault
+      - name: vault-operator
+        repo: oci://ghcr.io/bank-vaults/helm-charts
+        remoteChart: vault-operator
         namespace: vault
         createNamespace: true
         valuesFiles:
-          - values/vault-values.yaml
+          - values/vault-operator-values.yaml
         wait: true
+
+---
+# Vault instance — the Vault CR that the operator reconciles.
+# Includes: persistent storage, auto-unseal, Kubernetes auth, Database + KV engines,
+# ESO policy/role, and startup secrets. Replaces the old vault Helm chart + init Jobs.
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: vault-instance
+
+manifests:
+  rawYaml:
+    - manifests/vault-rbac.yaml
+    - manifests/vault-instance.yaml
+
+deploy:
+  kubectl:
+    defaultNamespace: vault
+
+---
+# ClusterSecretStores — tell ESO how to connect to Vault.
+# Two stores: one for Database Secrets Engine, one for KV v2.
+# Deployed after Vault is running so ESO can immediately authenticate.
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: vault-secret-stores
+
+manifests:
+  rawYaml:
+    - manifests/cluster-secret-store.yaml
+    - manifests/cluster-secret-store-kv.yaml
+
+deploy:
+  kubectl:
+    defaultNamespace: vault
 
 ---
 apiVersion: skaffold/v4beta13
@@ -88,21 +132,3 @@ deploy:
         valuesFiles:
           - values/telepresence-values.yaml
         wait: true
-
----
-# vault-cluster-init configures cluster-wide Vault settings:
-# Kubernetes auth, Database Secrets Engine, ESO policy/role, and ClusterSecretStore.
-# Deployed after vault + external-secrets are ready.
-apiVersion: skaffold/v4beta13
-kind: Config
-metadata:
-  name: vault-cluster-init
-
-manifests:
-  rawYaml:
-    - manifests/vault-cluster-init-job.yaml
-    - manifests/cluster-secret-store.yaml
-
-deploy:
-  kubectl:
-    defaultNamespace: vault

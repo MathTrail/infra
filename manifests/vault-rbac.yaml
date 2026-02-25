@@ -1,0 +1,82 @@
+# RBAC for the Vault instance managed by Bank-Vaults Operator.
+# Based on: https://github.com/bank-vaults/vault-operator/tree/main/deploy/rbac
+#
+# The operator needs a ServiceAccount + Roles for:
+# - Managing pods, secrets, configmaps in the vault namespace (for unseal keys, TLS certs)
+# - Leader election (if running HA in future)
+# - ClusterRoleBinding for auth-delegator (TokenReview for Kubernetes auth method)
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault
+subjects:
+  - kind: ServiceAccount
+    name: vault
+
+---
+# Leader election role — used by bank-vaults sidecar for leader election in HA setups.
+# Included now for forward compatibility.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: leader-election-role
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: leader-election-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: leader-election-role
+subjects:
+  - kind: ServiceAccount
+    name: vault
+
+---
+# ClusterRoleBinding: allows Vault's SA to perform TokenReview calls.
+# Required for the Kubernetes auth method to validate ServiceAccount JWTs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: vault

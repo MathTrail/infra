@@ -1,0 +1,215 @@
+# Bank-Vaults Vault Custom Resource — global infrastructure only.
+#
+# What this CR does (declaratively):
+# 1. Deploys a single-replica Vault server with persistent file storage
+# 2. Auto-initializes and auto-unseals using keys stored in K8s Secret
+# 3. Configures Kubernetes auth method (ESO + db-admin for service Jobs)
+# 4. Mounts Database Secrets Engine (config/roles created by per-service Jobs)
+# 5. Enables KV v2 Secrets Engine for static secrets
+# 6. Seeds local development KV secrets via startupSecrets
+#
+# Per-service DB connection configs and dynamic roles are NOT defined here.
+# Each service repo owns its own vault-db-config Job (Helm hook) that runs
+# `vault write database/config/...` and `vault write database/roles/...`.
+# See: mathtrail-service-lib _vault-db-config-job.tpl
+
+apiVersion: vault.banzaicloud.com/v1alpha1
+kind: Vault
+metadata:
+  name: vault
+spec:
+  size: 1
+  image: hashicorp/vault:1.17
+  bankVaultsImage: ghcr.io/bank-vaults/bank-vaults:v1.31.2
+
+  # ServiceAccount with auth-delegator binding (see vault-rbac.yaml).
+  serviceAccount: vault
+
+  # --- Persistent storage (file backend) ---
+  # PVC is provisioned automatically by the operator via volumeClaimTemplates.
+  # StorageClass defaults to cluster default (local-path on K3d).
+  # On-prem overlay: set storageClassName to "longhorn".
+  volumeClaimTemplates:
+    - metadata:
+        name: vault-file
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+
+  volumeMounts:
+    - name: vault-file
+      mountPath: /vault/file
+
+  # --- Vault server configuration ---
+  config:
+    storage:
+      file:
+        path: /vault/file
+    listener:
+      tcp:
+        address: "0.0.0.0:8200"
+        # TLS disabled — ESO communicates over cluster-internal HTTP.
+        # Enable TLS as a follow-up (operator auto-generates certs).
+        tls_disable: true
+    ui: false
+
+  # --- Auto-unseal via Kubernetes Secret ---
+  # On first init the operator creates Secret "vault-unseal-keys" in namespace "vault"
+  # containing unseal key shares + root token. On pod restart the operator reads
+  # this Secret and unseals Vault automatically — no manual intervention.
+  unsealConfig:
+    options:
+      preFlightChecks: true
+      storeRootToken: true
+      secretShares: 5
+      secretThreshold: 3
+    kubernetes:
+      secretNamespace: vault
+
+  # --- Resource limits (matches previous Helm chart values) ---
+  resources:
+    vault:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+  # ============================================================================
+  # EXTERNAL CONFIG — declarative replacement for vault-cluster-init + vault-db-init
+  # ============================================================================
+  # The vault-configurer sidecar applies this configuration idempotently.
+  # If you add a new policy, role, or database connection — just kubectl apply
+  # the updated CR and the configurer will reconcile Vault state.
+  externalConfig:
+
+    # ── Policies ──────────────────────────────────────────────────────────────
+    policies:
+      - name: eso-policy
+        rules: |
+          # Dynamic database credentials (all services)
+          path "database/creds/*" {
+            capabilities = ["read"]
+          }
+          path "database/config/*" {
+            capabilities = ["read"]
+          }
+          # Static KV secrets (passwords, DSNs, API keys)
+          path "secret/data/*" {
+            capabilities = ["read"]
+          }
+
+      # Policy for Dapr sidecars in the mathtrail namespace.
+      # Allows reading dynamic DB credentials and static KV secrets.
+      # Used by both "vault" (KV v2) and "vault-db" (database engine) components.
+      - name: dapr-read-policy
+        rules: |
+          path "database/creds/*" {
+            capabilities = ["read"]
+          }
+          path "secret/data/*" {
+            capabilities = ["read"]
+          }
+          path "secret/metadata/*" {
+            capabilities = ["read"]
+          }
+
+      # Policy for per-service vault-db-config Jobs.
+      # Allows creating/updating DB connection configs and dynamic roles.
+      # Services authenticate via their own SA in the app namespace.
+      - name: db-admin-policy
+        rules: |
+          path "database/config/*" {
+            capabilities = ["create", "read", "update", "delete"]
+          }
+          path "database/roles/*" {
+            capabilities = ["create", "read", "update", "delete"]
+          }
+          path "database/config/+/reset-connection" {
+            capabilities = ["create", "update"]
+          }
+
+    # ── Authentication ────────────────────────────────────────────────────────
+    auth:
+      - type: kubernetes
+        roles:
+          # ESO authenticates to Vault using its own ServiceAccount JWT.
+          - name: eso-role
+            bound_service_account_names: ["external-secrets"]
+            bound_service_account_namespaces: ["external-secrets"]
+            policies: ["eso-policy"]
+            ttl: 1h
+
+          # Dapr sidecars authenticate with this role to read secrets at runtime.
+          # Bound to any SA in the mathtrail namespace (each service uses its own SA).
+          # TTL 24h — long enough to survive pod lifetime; Dapr handles renewal.
+          - name: dapr-reader-role
+            bound_service_account_names: ["*"]
+            bound_service_account_namespaces: ["mathtrail"]
+            policies: ["dapr-read-policy"]
+            ttl: 24h
+
+          # Per-service vault-db-config Jobs authenticate with this role.
+          # Wildcard SA name — any SA in the app namespace can configure DB
+          # connections. The db-admin-policy restricts access to only
+          # database/config/* and database/roles/* paths.
+          - name: db-admin-role
+            bound_service_account_names: ["*"]
+            bound_service_account_namespaces: ["mathtrail"]
+            policies: ["db-admin-policy"]
+            ttl: 5m
+
+    # ── Secrets Engines ───────────────────────────────────────────────────────
+    secrets:
+      # KV v2 — static secrets (db-password, redis-password, kratos-dsn, etc.)
+      - path: secret
+        type: kv
+        description: Static KV secrets (passwords, DSNs, API keys).
+        options:
+          version: 2
+
+      # Database Secrets Engine — dynamic short-lived PostgreSQL credentials.
+      # This CR only mounts the engine. Per-service connection configs and
+      # dynamic roles are created by vault-db-config Helm hook Jobs in each
+      # service repo (mentor-api, profile-api, task-api).
+      #
+      # Empty config/roles arrays: the configurer sees the engine is declared
+      # but has no configs to reconcile — leaving Job-created entries untouched.
+      # If the configurer unexpectedly purges Job-created configs, add minimal
+      # stub entries here (just name + plugin_name) as placeholders.
+      - type: database
+        description: Dynamic PostgreSQL credentials for all services.
+        configuration:
+          config: []
+          roles: []
+
+    # ── Startup Secrets (local dev seed data) ─────────────────────────────────
+    # Written once on first init. Provides static KV secrets for services that
+    # use ExternalSecrets with vault-kv-backend in local development.
+    startupSecrets:
+      - type: kv
+        path: secret/data/local/mathtrail-profile
+        data:
+          data:
+            db-password: mathtrail
+            redis-password: mathtrail
+      - type: kv
+        path: secret/data/local/mathtrail-identity
+        data:
+          data:
+            kratos-dsn: "postgres://mathtrail:mathtrail@postgres-postgresql:5432/kratos?sslmode=disable"
+            hydra-dsn: "postgres://mathtrail:mathtrail@postgres-postgresql:5432/hydra?sslmode=disable"
+      - type: kv
+        path: secret/data/local/mathtrail-task
+        data:
+          data:
+            db-password: mathtrail
+      - type: kv
+        path: secret/data/local/mathtrail-llm-taskgen
+        data:
+          data:
+            llm-api-key: "local-dev-placeholder"
