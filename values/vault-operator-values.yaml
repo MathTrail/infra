@@ -1,0 +1,10 @@
+# Bank-Vaults Operator — manages Vault CRs (init, unseal, configure).
+# Deployed into the `vault` namespace alongside the Vault instance.
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
