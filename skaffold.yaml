@@ -58,9 +58,8 @@ deploy:
   helm:
     releases:
       - name: vault
-        repo: https://helm.releases.hashicorp.com
+        repo: "{{.CHARTS_REPO}}"
         remoteChart: vault
-        version: "0.28.1"
         namespace: vault
         createNamespace: true
         valuesFiles:
@@ -93,8 +92,7 @@ manifests:
     - manifests/vault-init-job.yaml
 
 deploy:
-  kubectl:
-    defaultNamespace: vault
+  kubectl: {}
 
 ---
 # Vault Config Operator (VCO) — RedHat CoP operator for declarative Vault configuration.
@@ -108,12 +106,13 @@ deploy:
   helm:
     releases:
       - name: vault-config-operator
-        repo: https://redhat-cop.github.io/vault-config-operator
+        repo: "{{.CHARTS_REPO}}"
         remoteChart: vault-config-operator
         namespace: vault-config-operator
         createNamespace: true
         setValues:
           replicaCount: "1"
+          enableMonitoring: "false"
         wait: true
 
 ---
@@ -130,8 +129,7 @@ manifests:
       - vault-config
 
 deploy:
-  kubectl:
-    defaultNamespace: vault-config-operator
+  kubectl: {}
 
 ---
 # Vault Secrets Operator (VSO) — writes Vault dynamic secrets into K8s Secrets.
@@ -146,9 +144,8 @@ deploy:
   helm:
     releases:
       - name: vault-secrets-operator
-        repo: https://helm.releases.hashicorp.com
+        repo: "{{.CHARTS_REPO}}"
         remoteChart: vault-secrets-operator
-        version: "0.8.1"
         namespace: vault-secrets-operator
         createNamespace: true
         setValues:
@@ -172,8 +169,7 @@ manifests:
     - manifests/cluster-secret-store-kv.yaml
 
 deploy:
-  kubectl:
-    defaultNamespace: vault
+  kubectl: {}
 
 ---
 apiVersion: skaffold/v4beta13

@@ -1,7 +1,7 @@
 server:
   image:
     repository: hashicorp/vault
-    tag: "1.17.0"
+    tag: "1.19.0"
 
   resources:
     requests:

@@ -23,7 +23,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: vault-init
-          image: hashicorp/vault:1.17.0
+          image: hashicorp/vault:1.19.0
           env:
             - name: VAULT_ADDR
               value: "http://vault-0.vault-internal.vault.svc.cluster.local:8200"
