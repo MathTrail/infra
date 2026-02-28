@@ -28,7 +28,7 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 # What Is Currently Deployed
 - **vault-prereqs**: `vault` namespace + `mathtrail` namespace + unseal-key Secret placeholder
 - **HashiCorp Vault** (Helm release into `vault` namespace, HA Raft — 3 replicas prod, 1 dev)
-- **vault-init**: RBAC + idempotent init Job (initializes cluster, writes seal key, auto-unseals)
+- **vault-init**: RBAC + idempotent init Job (initializes cluster, unseals with Shamir keys)
 - **Vault Config Operator (VCO)** (Helm release into `vault-config-operator` namespace)
   - Reconciles VaultConnection, VaultAuth, Policy, SecretEngineMount, DatabaseSecretEngineRole, etc.
 - **VCO Custom Resources** (Kustomize — `vault-config/`):
@@ -56,7 +56,7 @@ mathtrail-infra (top-level)
 
 # Vault Architecture
 - **HashiCorp Vault** in HA Raft mode (3 replicas prod, 1 replica dev via Skaffold profile)
-- **Auto-unseal**: vault-init Job writes unseal keys to K8s Secret `vault-unseal-key`
+- **Shamir unseal**: vault-init Job initializes Vault, unseals with Shamir keys, stores keys in `vault-unseal-key` Secret
 - **VCO** (Vault Config Operator) manages all Vault configuration declaratively via CRs
 - **VSO** (Vault Secrets Operator) syncs Vault secrets into K8s Secrets for pods
   - Pods consume credentials via `secretKeyRef` env vars

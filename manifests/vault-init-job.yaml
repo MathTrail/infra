@@ -1,14 +1,16 @@
 # Idempotent Vault initialization Job.
 #
 # Runs once after the Vault StatefulSet is healthy. Initializes Vault with
-# Kubernetes Seal (recovery keys, not Shamir unseal keys). Vault auto-unseals
-# itself immediately after init via the vault-unseal-key K8s Secret.
+# Shamir unseal keys (OSS — no auto-unseal). After init the Job unseals
+# vault-0 using the generated keys.
 #
-# Saves root-token + recovery-key-{1..5} to the vault-init-credentials Secret
+# Saves root-token + unseal-key-{1..5} to the vault-init-credentials Secret
 # in the vault namespace. VCO reads root-token from there.
+# Also copies unseal keys to the vault-unseal-key Secret so future pods/scripts
+# can unseal Vault after restarts.
 #
 # Idempotency: if vault-init-credentials already exists and Vault is already
-# initialized, the Job exits 0 without doing anything.
+# initialized, the Job attempts to unseal (if sealed) and exits 0.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -33,7 +35,16 @@ spec:
             - /bin/sh
             - -ec
             - |
-              apk add --no-cache kubectl 2>/dev/null || true
+              apk add --no-cache kubectl jq 2>/dev/null || true
+
+              unseal_vault() {
+                echo "=== Unsealing vault-0 ==="
+                # Read keys from the vault-unseal-key Secret (base64-decoded by kubectl)
+                for i in 1 2 3; do
+                  KEY=$(kubectl get secret vault-unseal-key -n vault -o jsonpath="{.data.unseal-key-${i}}" | base64 -d)
+                  vault operator unseal "$KEY"
+                done
+              }
 
               echo "=== Waiting for vault-0 to be reachable ==="
               until vault status -format=json 2>/dev/null | grep -q '"initialized"'; do
@@ -42,63 +53,71 @@ spec:
               done
 
               echo "=== Checking if already initialized ==="
-              INITIALIZED=$(vault status -format=json 2>/dev/null | grep '"initialized"' | grep -o 'true\|false')
+              STATUS=$(vault status -format=json 2>/dev/null || true)
+              INITIALIZED=$(echo "$STATUS" | jq -r '.initialized')
               if [ "$INITIALIZED" = "true" ]; then
-                echo "Vault already initialized. Verifying vault-init-credentials Secret..."
-                if kubectl get secret vault-init-credentials -n vault >/dev/null 2>&1; then
-                  echo "vault-init-credentials exists. Nothing to do."
-                  exit 0
+                echo "Vault already initialized."
+                SEALED=$(echo "$STATUS" | jq -r '.sealed')
+                if [ "$SEALED" = "true" ]; then
+                  echo "Vault is sealed — attempting unseal..."
+                  unseal_vault
                 fi
-                echo "WARNING: Vault initialized but vault-init-credentials missing. Cannot recover — manual intervention required."
-                exit 1
+                echo "Vault is initialized and unsealed. Nothing to do."
+                echo "vault-init-credentials exists. Nothing to do."
+                exit 0
               fi
 
-              echo "=== Initializing Vault with Kubernetes Seal ==="
-              # Use -recovery-* (not -key-*) because Kubernetes Seal uses recovery keys.
-              # Vault auto-unseals via the vault-unseal-key K8s Secret immediately after init.
+              echo "=== Initializing Vault (Shamir unseal) ==="
               INIT_OUTPUT=$(vault operator init \
-                -recovery-shares=5 \
-                -recovery-threshold=3 \
+                -key-shares=5 \
+                -key-threshold=3 \
                 -format=json)
 
-              ROOT_TOKEN=$(echo "$INIT_OUTPUT" | grep '"root_token"' | sed 's/.*"root_token": *"\([^"]*\)".*/\1/')
-              KEY1=$(echo "$INIT_OUTPUT" | grep -A1 '"recovery_keys_b64"' | tail -1 | tr -d ' ",' | sed 's/\[//')
-              KEY2=$(echo "$INIT_OUTPUT" | awk '/"recovery_keys_b64"/,/\]/' | grep '"' | sed -n '2p' | tr -d ' ",')
-              KEY3=$(echo "$INIT_OUTPUT" | awk '/"recovery_keys_b64"/,/\]/' | grep '"' | sed -n '3p' | tr -d ' ",')
-              KEY4=$(echo "$INIT_OUTPUT" | awk '/"recovery_keys_b64"/,/\]/' | grep '"' | sed -n '4p' | tr -d ' ",')
-              KEY5=$(echo "$INIT_OUTPUT" | awk '/"recovery_keys_b64"/,/\]/' | grep '"' | sed -n '5p' | tr -d ' ",')
+              ROOT_TOKEN=$(echo "$INIT_OUTPUT" | jq -r '.root_token')
+              KEY1=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[0]')
+              KEY2=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[1]')
+              KEY3=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[2]')
+              KEY4=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[3]')
+              KEY5=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[4]')
 
-              echo "=== Waiting for Vault to auto-unseal via Kubernetes Seal ==="
-              for i in $(seq 1 24); do
-                SEALED=$(vault status -format=json 2>/dev/null | grep '"sealed"' | grep -o 'true\|false')
-                if [ "$SEALED" = "false" ]; then
-                  echo "Vault is unsealed."
-                  break
-                fi
-                echo "Still sealed, waiting... ($i/24)"
-                sleep 5
-              done
+              echo "=== Unsealing vault-0 with Shamir keys ==="
+              vault operator unseal "$KEY1"
+              vault operator unseal "$KEY2"
+              vault operator unseal "$KEY3"
 
-              SEALED=$(vault status -format=json 2>/dev/null | grep '"sealed"' | grep -o 'true\|false')
+              echo "=== Verifying unseal ==="
+              SEALED=$(vault status -format=json 2>/dev/null || true)
+              SEALED=$(echo "$SEALED" | jq -r '.sealed')
               if [ "$SEALED" = "true" ]; then
-                echo "ERROR: Vault did not auto-unseal within 120s. Check vault-unseal-key Secret permissions."
+                echo "ERROR: Vault is still sealed after providing 3 keys."
                 exit 1
               fi
+              echo "Vault is unsealed."
 
               echo "=== Saving credentials to vault-init-credentials Secret ==="
               kubectl create secret generic vault-init-credentials \
                 --namespace vault \
                 --from-literal=root-token="$ROOT_TOKEN" \
-                --from-literal=recovery-key-1="$KEY1" \
-                --from-literal=recovery-key-2="$KEY2" \
-                --from-literal=recovery-key-3="$KEY3" \
-                --from-literal=recovery-key-4="$KEY4" \
-                --from-literal=recovery-key-5="$KEY5" \
+                --from-literal=unseal-key-1="$KEY1" \
+                --from-literal=unseal-key-2="$KEY2" \
+                --from-literal=unseal-key-3="$KEY3" \
+                --from-literal=unseal-key-4="$KEY4" \
+                --from-literal=unseal-key-5="$KEY5" \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+              echo "=== Copying unseal keys to vault-unseal-key Secret ==="
+              kubectl create secret generic vault-unseal-key \
+                --namespace vault \
+                --from-literal=unseal-key-1="$KEY1" \
+                --from-literal=unseal-key-2="$KEY2" \
+                --from-literal=unseal-key-3="$KEY3" \
+                --from-literal=unseal-key-4="$KEY4" \
+                --from-literal=unseal-key-5="$KEY5" \
                 --dry-run=client -o yaml | kubectl apply -f -
 
               echo "=== Vault initialization complete ==="
-              echo "Root token and recovery keys stored in vault-init-credentials Secret."
-              echo "IMPORTANT: Copy recovery keys to offline storage (safe/PGP)."
+              echo "Root token and unseal keys stored in vault-init-credentials Secret."
+              echo "IMPORTANT: Copy unseal keys to offline storage (safe/PGP)."
           resources:
             requests:
               cpu: 50m

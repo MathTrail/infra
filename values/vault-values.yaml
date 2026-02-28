@@ -26,11 +26,6 @@ server:
           tls_disable     = true
         }
 
-        seal "kubernetes" {
-          root_key_secret_namespace = "vault"
-          root_key_secret_name      = "vault-unseal-key"
-        }
-
         storage "raft" {
           path = "/vault/data"
           retry_join {
