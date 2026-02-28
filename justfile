@@ -19,8 +19,7 @@ gitops_dir := env_var_or_default("GITOPS_DIR", justfile_directory() + "/../gitop
 # Base URL where the Helm chart repo is hosted (GitHub Pages)
 repo_url := env_var("CHARTS_REPO_ROOT")
 
-argocd_ns      := "argocd"
-argocd_version := "7.6.12"
+argocd_ns := "argocd"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PUBLIC COMMANDS
@@ -68,9 +67,9 @@ _install-argocd:
     echo ""
     echo "🐙 Step 1/2 — ArgoCD..."
 
-    helm upgrade --install argocd {{repo_url}}/argo-cd \
+    helm upgrade --install argocd argo-cd \
+      --repo {{repo_url}} \
       --namespace {{argocd_ns}} --create-namespace \
-      --version {{argocd_version}} \
       --set server.insecure=true \
       --wait --timeout 120s
 
