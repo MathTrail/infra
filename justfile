@@ -1,9 +1,8 @@
 # MathTrail Infrastructure Bootstrap
 #
 # Usage:
-#   just deploy          — full bootstrap: cluster + ArgoCD + infrastructure
+#   just deploy          — full bootstrap: ArgoCD + infrastructure
 #   just delete          — remove ArgoCD Applications (cluster stays)
-#   just nuke            — destroy the cluster entirely
 #   just status          — show status of all infrastructure Applications
 #   just argocd-ui       — open ArgoCD UI at localhost:8080
 #
@@ -12,9 +11,8 @@
 set shell := ["bash", "-c"]
 set dotenv-load := true
 
-# Paths to sibling repositories
-# Override via .env for non-standard layouts (K3S_DIR, GITOPS_DIR)
-k3s_dir    := env_var_or_default("K3S_DIR",    justfile_directory() + "/../infra-local-k3s")
+# Path to sibling gitops repository
+# Override via .env for non-standard layout (GITOPS_DIR)
 gitops_dir := env_var_or_default("GITOPS_DIR", justfile_directory() + "/../gitops")
 
 # Base URL where the Helm chart repo is hosted (GitHub Pages)
@@ -27,8 +25,8 @@ argocd_version := "7.6.12"
 # PUBLIC COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Full bootstrap: cluster + ArgoCD + all infrastructure
-deploy: _create-cluster _install-argocd _bootstrap-infra
+# Full bootstrap: ArgoCD + all infrastructure
+deploy: _install-argocd _bootstrap-infra
     @echo ""
     @echo "✅ Infrastructure ready! You can now run skaffold dev in microservices."
 
@@ -39,10 +37,6 @@ delete:
     echo "🗑️  Removing ArgoCD Applications..."
     kubectl delete -f "{{gitops_dir}}/apps/infrastructure/" --ignore-not-found
     echo "✅ Applications removed. Cluster and ArgoCD keep running."
-
-# Destroy the cluster entirely (including ArgoCD and everything in it)
-nuke:
-    just --justfile "{{k3s_dir}}/justfile" delete
 
 # Show infrastructure Applications status (ordered by sync-wave)
 status:
@@ -66,25 +60,15 @@ argocd-ui:
 # INTERNAL RECIPES
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Step 1: create k3d cluster (delegated to infra-local-k3s/justfile)
-[private]
-_create-cluster:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "📦 Step 1/3 — k3d cluster..."
-    just --justfile "{{k3s_dir}}/justfile" create
-    echo "✅ Cluster ready."
-
-# Step 2: install ArgoCD + create AppProject + configure repo access
+# Step 1: install ArgoCD + create AppProject + configure repo access
 [private]
 _install-argocd:
     #!/usr/bin/env bash
     set -euo pipefail
     echo ""
-    echo "🐙 Step 2/3 — ArgoCD..."
+    echo "🐙 Step 1/2 — ArgoCD..."
 
-    helm upgrade --install argocd argo/argo-cd \
-      --repo https://argoproj.github.io/argo-helm \
+    helm upgrade --install argocd {{repo_url}}/argo-cd \
       --namespace {{argocd_ns}} --create-namespace \
       --version {{argocd_version}} \
       --set server.insecure=true \
@@ -116,13 +100,13 @@ EOF
       echo "  ✅ Repository access configured."
     fi
 
-# Step 3: apply Applications and wait for all waves to complete
+# Step 2: apply Applications and wait for all waves to complete
 [private]
 _bootstrap-infra:
     #!/usr/bin/env bash
     set -euo pipefail
     echo ""
-    echo "🌊 Step 3/3 — Infrastructure via ArgoCD (sync-waves 0 → 4)..."
+    echo "🌊 Step 2/2 — Infrastructure via ArgoCD (sync-waves 0 → 4)..."
 
     kubectl apply -f "{{gitops_dir}}/apps/infrastructure/"
     echo "  Applications applied. ArgoCD sync in progress..."
