@@ -17,9 +17,9 @@ spec:
       targetRevision: ">=0.0.0" # latest from vendored repo
       helm:
         valueFiles:
-          - $values/infra/values/cert-manager-values.yaml
+          - $values/values/cert-manager-values.yaml
     - repoURL: https://github.com/MathTrail/infra
-      targetRevision: main
+      targetRevision: {{ .Values.gitBranch }}
       ref: values
   destination:
     server: https://kubernetes.default.svc

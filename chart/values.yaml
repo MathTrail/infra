@@ -4,6 +4,9 @@
 # To enable chaos testing (staging only):
 #   helm upgrade infra-apps ./chart --set chaos.deploy=true
 
+# Git branch for ArgoCD to fetch sources from (auto-detected by justfile).
+gitBranch: main
+
 core:
   deploy: true
 

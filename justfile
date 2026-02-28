@@ -3,6 +3,7 @@
 # Usage:
 #   just deploy          — full bootstrap: ArgoCD + infrastructure
 #   just delete          — remove ArgoCD Applications (cluster stays)
+#   just delete-all      — remove ArgoCD + Applications (full teardown)
 #   just status          — show status of all infrastructure Applications
 #   just argocd-ui       — open ArgoCD UI at localhost:8080
 #
@@ -33,6 +34,15 @@ delete:
     echo "🗑️  Removing ArgoCD Applications..."
     helm uninstall infra-apps --namespace {{argocd_ns}} 2>/dev/null || true
     echo "✅ Applications removed. Cluster and ArgoCD keep running."
+
+# Remove ArgoCD + all Applications (full teardown, cluster stays)
+delete-all: delete
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "🗑️  Removing ArgoCD..."
+    helm uninstall argocd --namespace {{argocd_ns}} 2>/dev/null || true
+    kubectl delete namespace {{argocd_ns}} --ignore-not-found
+    echo "✅ ArgoCD and all Applications removed. Cluster keeps running."
 
 # Show infrastructure Applications status (ordered by sync-wave)
 status:
@@ -92,6 +102,7 @@ _bootstrap-infra:
 
     helm upgrade --install infra-apps "{{justfile_directory()}}/chart" \
       --namespace {{argocd_ns}} \
+      --set gitBranch="$(git rev-parse --abbrev-ref HEAD)" \
       --timeout 60s
     echo "  Applications applied. ArgoCD sync in progress..."
 
@@ -99,18 +110,39 @@ _bootstrap-infra:
     _wait_app() {
       local app=$1 timeout=${2:-600} elapsed=0
       printf "    ⏳ %-38s" "$app"
+
+      # Give ArgoCD time to start reconciling the Application
+      sleep 5
+
       while [ $elapsed -lt $timeout ]; do
-        local health
+        local health sync phase
         health=$(kubectl -n {{argocd_ns}} get application "$app" \
           -o jsonpath='{.status.health.status}' 2>/dev/null || echo "")
-        if [ "$health" = "Healthy" ]; then
-          echo "✅ Healthy"
+        sync=$(kubectl -n {{argocd_ns}} get application "$app" \
+          -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
+        phase=$(kubectl -n {{argocd_ns}} get application "$app" \
+          -o jsonpath='{.status.operationState.phase}' 2>/dev/null || echo "")
+
+        # Fail fast on error/degraded
+        if [ "$health" = "Degraded" ] || [ "$phase" = "Failed" ] || [ "$phase" = "Error" ]; then
+          local msg
+          msg=$(kubectl -n {{argocd_ns}} get application "$app" \
+            -o jsonpath='{.status.operationState.message}' 2>/dev/null || echo "unknown error")
+          echo "❌ $health (sync=$sync, phase=$phase): $msg"
+          return 1
+        fi
+
+        # Success: synced + healthy
+        if [ "$health" = "Healthy" ] && [ "$sync" = "Synced" ]; then
+          echo "✅ Healthy (synced)"
           return 0
         fi
+
         sleep 10
         elapsed=$((elapsed + 10))
       done
-      echo "❌ timeout (${timeout}s)"
+
+      echo "❌ timeout (${timeout}s) — health=$health sync=$sync phase=$phase"
       return 1
     }
 

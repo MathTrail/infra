@@ -16,12 +16,12 @@ spec:
       targetRevision: ">=0.0.0" # latest from vendored repo
       helm:
         valueFiles:
-          - $values/infra/values/vault-config-operator-values.yaml
+          - $values/values/vault-config-operator-values.yaml
     - repoURL: https://github.com/MathTrail/infra
-      targetRevision: main
+      targetRevision: {{ .Values.gitBranch }}
       ref: values
     - repoURL: https://github.com/MathTrail/infra
-      targetRevision: main
+      targetRevision: {{ .Values.gitBranch }}
       path: manifests
       directory:
         include: "vco-cainjector-patch-job.yaml"

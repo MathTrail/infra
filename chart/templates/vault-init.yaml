@@ -12,7 +12,7 @@ spec:
   project: mathtrail
   source:
     repoURL: https://github.com/MathTrail/infra
-    targetRevision: main
+    targetRevision: {{ .Values.gitBranch }}
     path: manifests
     directory:
       include: "vault-unseal-key-secret.yaml,vault-init-rbac.yaml,vault-init-job.yaml,vault-rbac.yaml,namespace.yaml"

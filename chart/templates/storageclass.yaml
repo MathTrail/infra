@@ -10,7 +10,7 @@ spec:
   source:
     repoURL: https://github.com/MathTrail/gitops
     path: environments/on-prem
-    targetRevision: main
+    targetRevision: {{ .Values.gitBranch }}
   destination:
     server: https://kubernetes.default.svc
     namespace: default

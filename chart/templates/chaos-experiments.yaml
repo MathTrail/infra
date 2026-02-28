@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://github.com/MathTrail/gitops
     path: apps/chaos
-    targetRevision: main
+    targetRevision: {{ .Values.gitBranch }}
   destination:
     server: https://kubernetes.default.svc
     namespace: mathtrail
