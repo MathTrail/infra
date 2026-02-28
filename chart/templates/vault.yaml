@@ -13,12 +13,12 @@ spec:
   sources:
     - repoURL: https://MathTrail.github.io/charts/charts
       chart: vault
-      targetRevision: HEAD
+      targetRevision: ">=0.0.0" # latest from vendored repo
       helm:
         valueFiles:
           - $values/infra/values/vault-values.yaml
     - repoURL: https://github.com/MathTrail/infra
-      targetRevision: HEAD
+      targetRevision: main
       ref: values
   destination:
     server: https://kubernetes.default.svc

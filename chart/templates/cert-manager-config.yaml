@@ -12,7 +12,7 @@ spec:
   project: mathtrail
   source:
     repoURL: https://github.com/MathTrail/infra
-    targetRevision: HEAD
+    targetRevision: main
     path: manifests
     directory:
       include: "cert-manager-issuers.yaml"
