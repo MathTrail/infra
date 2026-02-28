@@ -1,0 +1,26 @@
+{{- if .Values.core.deploy }}
+# VCO configuration CRs — applied after VCO operator is running (wave 3).
+# sync-wave 4: parallel with vault-secrets-operator.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: mathtrail
+  source:
+    repoURL: https://github.com/MathTrail/infra
+    targetRevision: HEAD
+    path: vault-config
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault-config-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}

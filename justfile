@@ -12,12 +12,8 @@ set shell := ["bash", "-c"]
 set dotenv-load := true
 set dotenv-filename := "skaffold.env"
 
-# Path to sibling gitops repository
-# Override via .env for non-standard layout (GITOPS_DIR)
-gitops_dir := env_var_or_default("GITOPS_DIR", justfile_directory() + "/../gitops")
-
 # Base URL where the Helm chart repo is hosted (GitHub Pages)
-repo_url := env_var("CHARTS_REPO_ROOT")
+repo_url := env_var("CHARTS_REPO")
 
 argocd_ns := "argocd"
 
@@ -35,7 +31,7 @@ delete:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "🗑️  Removing ArgoCD Applications..."
-    kubectl delete -f "{{gitops_dir}}/apps/infrastructure/" --ignore-not-found
+    helm uninstall infra-apps --namespace {{argocd_ns}} 2>/dev/null || true
     echo "✅ Applications removed. Cluster and ArgoCD keep running."
 
 # Show infrastructure Applications status (ordered by sync-wave)
@@ -94,7 +90,9 @@ _bootstrap-infra:
     echo ""
     echo "🌊 Step 2/2 — Infrastructure via ArgoCD (sync-waves 0 → 4)..."
 
-    kubectl apply -f "{{gitops_dir}}/apps/infrastructure/"
+    helm upgrade --install infra-apps "{{justfile_directory()}}/chart" \
+      --namespace {{argocd_ns}} \
+      --timeout 60s
     echo "  Applications applied. ArgoCD sync in progress..."
 
     # Wait for Applications sequentially by wave for clear progress output

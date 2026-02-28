@@ -1,0 +1,38 @@
+{{- if .Values.core.deploy }}
+# Vault Config Operator (VCO) — Red Hat Community of Practice.
+# wave 3: runs after vault-init (wave 2) and cert-manager-config (wave 2).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-config-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: mathtrail
+  sources:
+    - repoURL: https://MathTrail.github.io/charts/charts
+      chart: vault-config-operator
+      targetRevision: HEAD
+      helm:
+        valueFiles:
+          - $values/infra/values/vault-config-operator-values.yaml
+    - repoURL: https://github.com/MathTrail/infra
+      targetRevision: HEAD
+      ref: values
+    - repoURL: https://github.com/MathTrail/infra
+      targetRevision: HEAD
+      path: manifests
+      directory:
+        include: "vco-cainjector-patch-job.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault-config-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+{{- end }}
