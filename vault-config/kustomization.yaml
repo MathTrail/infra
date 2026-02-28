@@ -1,0 +1,4 @@
+resources:
+  - _base
+  - mentor-api
+  - profile-api

@@ -1,0 +1,12 @@
+# Enable and configure the Kubernetes auth method.
+# VCO auto-discovers the cluster host and service account issuer when left empty.
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: KubernetesAuthEngineMount
+metadata:
+  name: kubernetes
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  vaultAuthRef: vault-admin-auth
+  path: auth/kubernetes

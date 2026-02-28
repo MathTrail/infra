@@ -1,0 +1,18 @@
+# Per-service Kubernetes auth role for profile-api.
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: KubernetesAuthEngineRole
+metadata:
+  name: profile-api
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  vaultAuthRef: vault-admin-auth
+  path: auth/kubernetes
+  policies:
+    - vso-db-policy
+  targetServiceAccounts:
+    - serviceAccount: mathtrail-profile
+      namespaces:
+        - mathtrail
+  TTL: 1h

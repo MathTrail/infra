@@ -1,0 +1,16 @@
+# VaultAuth for VCO itself — uses the root token from vault-init Job.
+# In prod, replace root token with a dedicated admin AppRole token after initial setup.
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: VaultAuth
+metadata:
+  name: vault-admin-auth
+  namespace: vault-config-operator
+spec:
+  vaultConnectionRef: vault-cluster-connection
+  method: token
+  path: auth/token
+  token:
+    secretRef:
+      name: vault-init-credentials
+      namespace: vault
+      key: root-token

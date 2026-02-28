@@ -1,21 +1,21 @@
 # mathtrail-infra
-Global cluster infrastructure — deploys Dapr runtime and shared Dapr components.
+Global cluster infrastructure — deploys Vault, External Secrets, and shared security components.
 
 ## What This Repo Deploys
-- **Dapr runtime** — Helm chart into `dapr-system` namespace
-- **Dapr components** — shared components (statestore) into the application namespace
+- **Vault** — secrets management (dynamic DB credentials, KV secrets)
+- **External Secrets Operator** — sync Vault secrets to Kubernetes
 
 ## Tech Stack
 - **Orchestration**: Helm, Skaffold
-- **Service Mesh**: Dapr
+- **Secrets**: Vault, External Secrets
 - **Task Runner**: Just
 
 ## Repository Structure
 ```
-dapr/
-  components.yaml     # shared Dapr components (statestore)
-skaffold.yaml         # Skaffold config (module: mathtrail-infra)
-justfile              # deploy / delete recipes
+manifests/
+  vault-instance.yaml   # Vault CR with policies, auth roles, secrets engines
+skaffold.yaml           # Skaffold config (module: mathtrail-infra)
+justfile                # deploy / delete recipes
 ```
 
 ## Prerequisites
@@ -28,19 +28,18 @@ See the [core repository](../core/README.md) for complete setup instructions.
 ### Included in DevContainer
 - **Helm** — Kubernetes package manager
 - **kubectl** — Kubernetes command-line tool
-- **Dapr CLI** — Dapr runtime CLI
 - **Just** — task runner for common commands
 
 ## Usage
 ```sh
-just deploy    # Deploy Dapr + namespace + components
+just deploy    # Deploy Vault + namespace + components
 just delete    # Remove everything
 ```
 
 ## DevContainer Support
-A DevContainer configuration is included. Inside the container: kubectl, Helm, Docker CLI, Dapr CLI, Just.
+A DevContainer configuration is included. Inside the container: kubectl, Helm, Docker CLI, Just.
 
 ## Troubleshooting
 - Check cluster connectivity: `kubectl cluster-info`
-- Verify Dapr: `kubectl get pods -n dapr-system`
+- Verify Vault: `kubectl get pods -n vault`
 - Verify namespace: `kubectl get ns mathtrail`

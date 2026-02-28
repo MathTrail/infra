@@ -1,89 +1,166 @@
-﻿apiVersion: skaffold/v4beta13
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: mathtrail-infra
 
 requires:
-  # Phase 1: Deploy operators and controllers (parallel).
+  # Phase 1: Vault prerequisites + ESO operator + Telepresence (parallel).
+  # vault-prereqs applies the vault Namespace + empty unseal-key Secret so
+  # Vault pods can start in sealed/uninitialized state without RBAC errors.
   - configs:
-      - dapr
-      - vault-operator
+      - vault-prereqs
       - external-secrets
       - telepresence
-  # Phase 2: Deploy Vault instance CR (operator must be ready first).
+  # Phase 2: HashiCorp Vault Helm chart (needs vault Namespace + unseal-key Secret).
   - configs:
-      - vault-instance
-  # Phase 3: Deploy ClusterSecretStores (Vault must be running + configured first).
+      - vault
+  # Phase 3: Vault init Job + RBAC (runs after vault pods are up, initialises + unseals).
+  - configs:
+      - vault-init
+  # Phase 4: Vault Config Operator (needs Vault initialized and unsealed).
+  - configs:
+      - vault-config-operator
+  # Phase 5: VCO CRs + VSO (parallel; VCO CRs need VCO operator; VSO only needs Vault).
+  - configs:
+      - vault-config
+      - vault-secrets-operator
+  # Phase 6: ESO ClusterSecretStores (Vault must be ready and KV engine configured).
   - configs:
       - vault-secret-stores
 
 ---
+# vault-prereqs applies the vault Namespace and the empty vault-unseal-key Secret
+# placeholder that Kubernetes Seal requires to exist before vault-0 starts.
+# Also applies the mathtrail app Namespace.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: dapr
+  name: vault-prereqs
 
 manifests:
   rawYaml:
-    - dapr/namespace.yaml
-    - dapr/components.yaml
-    - dapr/vault-secret-store.yaml
+    - manifests/vault-namespace.yaml
+    - manifests/namespace.yaml
+    - manifests/vault-unseal-key-secret.yaml
 
 deploy:
-  kubectl:
-    defaultNamespace: "{{.NAMESPACE}}"
-  helm:
-    releases:
-      - name: dapr
-        repo: "{{.CHARTS_REPO}}"
-        remoteChart: dapr
-        namespace: dapr-system
-        createNamespace: true
-        wait: true
+  kubectl: {}
 
 ---
-# Bank-Vaults Operator — manages Vault CRs (init, unseal, configure).
-# Must be deployed before the Vault instance CR.
+# HashiCorp Vault Helm chart — HA Raft (3 replicas) with Kubernetes auto-unseal.
+# Dev profile overrides server.ha.replicas to 1 to reduce local resource usage.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: vault-operator
+  name: vault
 
 deploy:
   helm:
     releases:
-      - name: vault-operator
-        repo: "{{.CHARTS_REPO}}"
-        remoteChart: vault-operator
-        version: "1.23.4"
+      - name: vault
+        repo: https://helm.releases.hashicorp.com
+        remoteChart: vault
+        version: "0.28.1"
         namespace: vault
         createNamespace: true
         valuesFiles:
-          - values/vault-operator-values.yaml
+          - values/vault-values.yaml
         wait: true
 
+profiles:
+  - name: dev
+    patches:
+      - op: add
+        path: /deploy/helm/releases/0/overrides
+        value:
+          server:
+            ha:
+              replicas: 1
+
 ---
-# Vault instance — the Vault CR that the operator reconciles.
-# Includes: persistent storage, auto-unseal, Kubernetes auth, Database + KV engines,
-# ESO policy/role, and startup secrets. Replaces the old vault Helm chart + init Jobs.
+# vault-init: applies vault SA RBAC + init Job SA RBAC + idempotent init Job.
+# Applied after Vault pods are up (Phase 3). The init Job initialises the cluster,
+# writes the seal key to vault-unseal-key Secret, and vault-0 auto-unseals.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: vault-instance
+  name: vault-init
 
 manifests:
   rawYaml:
     - manifests/vault-rbac.yaml
-    - manifests/vault-instance.yaml
+    - manifests/vault-init-rbac.yaml
+    - manifests/vault-init-job.yaml
 
 deploy:
   kubectl:
     defaultNamespace: vault
 
 ---
+# Vault Config Operator (VCO) — RedHat CoP operator for declarative Vault configuration.
+# Reconciles VaultConnection, VaultAuth, Policy, SecretEngineMount, DatabaseSecretEngineRole, etc.
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: vault-config-operator
+
+deploy:
+  helm:
+    releases:
+      - name: vault-config-operator
+        repo: https://redhat-cop.github.io/vault-config-operator
+        remoteChart: vault-config-operator
+        namespace: vault-config-operator
+        createNamespace: true
+        setValues:
+          replicaCount: "1"
+        wait: true
+
+---
+# VCO CRs — VaultConnection, VaultAuth, engines, policies, K8s auth roles,
+# per-service DB engine config + roles, and seed KV secrets.
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: vault-config
+
+manifests:
+  kustomize:
+    paths:
+      - vault-config
+
+deploy:
+  kubectl:
+    defaultNamespace: vault-config-operator
+
+---
+# Vault Secrets Operator (VSO) — writes Vault dynamic secrets into K8s Secrets.
+# Pods consume credentials via secretKeyRef env vars; VSO triggers rolling restarts
+# on lease renewal so no in-process credential refresh is needed.
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: vault-secrets-operator
+
+deploy:
+  helm:
+    releases:
+      - name: vault-secrets-operator
+        repo: https://helm.releases.hashicorp.com
+        remoteChart: vault-secrets-operator
+        version: "0.8.1"
+        namespace: vault-secrets-operator
+        createNamespace: true
+        setValues:
+          defaultVaultConnection.enabled: "true"
+          defaultVaultConnection.address: http://vault.vault.svc.cluster.local:8200
+          defaultVaultConnection.skipTLSVerify: "true"
+        wait: true
+
+---
 # ClusterSecretStores — tell ESO how to connect to Vault.
 # Two stores: one for Database Secrets Engine, one for KV v2.
-# Deployed after Vault is running so ESO can immediately authenticate.
+# Deployed after Vault is running and KV engine is configured by VCO.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:

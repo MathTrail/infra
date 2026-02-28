@@ -1,0 +1,8 @@
+resources:
+  - vault-connection.yaml
+  - vault-admin-auth.yaml
+  - vault-engines.yaml
+  - vault-k8s-auth.yaml
+  - vault-policies.yaml
+  - vault-k8s-auth-roles.yaml
+  - vault-seed-secrets.yaml

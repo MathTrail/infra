@@ -1,0 +1,37 @@
+# RBAC for the vault-init Job that runs after the Vault StatefulSet is healthy.
+# The Job needs to read/write Secrets in the vault namespace to save
+# root token + recovery keys in vault-init-credentials.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-init
+  namespace: vault
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-init
+  namespace: vault
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-init
+  namespace: vault
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-init
+subjects:
+  - kind: ServiceAccount
+    name: vault-init
+    namespace: vault

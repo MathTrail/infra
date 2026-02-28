@@ -1,73 +1,55 @@
-# RBAC for the Vault instance managed by Bank-Vaults Operator.
-# Based on: https://github.com/bank-vaults/vault-operator/tree/main/deploy/rbac
+# RBAC for the Vault StatefulSet managed by the HashiCorp Vault Helm chart.
 #
-# The operator needs a ServiceAccount + Roles for:
-# - Managing pods, secrets, configmaps in the vault namespace (for unseal keys, TLS certs)
-# - Leader election (if running HA in future)
-# - ClusterRoleBinding for auth-delegator (TokenReview for Kubernetes auth method)
+# The vault SA is created by the Helm chart (serviceAccount.create: true).
+# These Role + RoleBinding grant additional permissions required for:
+#   - Kubernetes Seal: read/write the vault-unseal-key Secret.
+#   - Raft: lease + configmap access for leader election.
+# The system:auth-delegator ClusterRoleBinding is also added by the Helm chart
+# via server.authDelegator.enabled=true; it is included here explicitly as well.
+#
+# Applied in vault-init phase (Phase 3) — after the Helm chart creates the SA.
+# vault-init SA is defined in vault-init-rbac.yaml.
 
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: vault
-
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: vault
+  namespace: vault
 rules:
+  # Full Secret access — needed for Kubernetes Seal to read/write vault-unseal-key.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["*"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "update", "patch"]
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: vault
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: vault
-subjects:
-  - kind: ServiceAccount
-    name: vault
-
----
-# Leader election role — used by bank-vaults sidecar for leader election in HA setups.
-# Included now for forward compatibility.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: leader-election-role
-rules:
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Raft leader election
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: leader-election-rolebinding
+  name: vault
+  namespace: vault
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: leader-election-role
+  name: vault
 subjects:
   - kind: ServiceAccount
     name: vault
+    namespace: vault
 
 ---
-# ClusterRoleBinding: allows Vault's SA to perform TokenReview calls.
+# ClusterRoleBinding: allows Vault SA to perform TokenReview calls.
 # Required for the Kubernetes auth method to validate ServiceAccount JWTs.
+# (Also created by Helm chart via authDelegator.enabled=true; kept here for clarity.)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:

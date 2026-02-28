@@ -1,0 +1,28 @@
+# KV v2 secrets engine — static secrets (passwords, DSNs, API keys).
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: SecretEngineMount
+metadata:
+  name: kv-secret
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  vaultAuthRef: vault-admin-auth
+  path: secret
+  type: kv
+  options:
+    version: "2"
+
+---
+# Database secrets engine — dynamic short-lived PostgreSQL credentials.
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: SecretEngineMount
+metadata:
+  name: database-engine
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  vaultAuthRef: vault-admin-auth
+  path: database
+  type: database

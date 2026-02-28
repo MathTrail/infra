@@ -1,0 +1,4 @@
+resources:
+  - db-engine-config.yaml
+  - k8s-auth-role.yaml
+  - db-role.yaml

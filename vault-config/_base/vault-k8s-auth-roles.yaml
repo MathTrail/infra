@@ -1,0 +1,61 @@
+# ESO role — bound to the external-secrets ServiceAccount.
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: KubernetesAuthEngineRole
+metadata:
+  name: eso-role
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  vaultAuthRef: vault-admin-auth
+  path: auth/kubernetes
+  policies:
+    - eso-policy
+  targetServiceAccounts:
+    - serviceAccount: external-secrets
+      namespaces:
+        - external-secrets
+  TTL: 1h
+
+---
+# VSO role — bound to the vault-secrets-operator controller SA.
+# VSO uses this to authenticate to Vault on behalf of services.
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: KubernetesAuthEngineRole
+metadata:
+  name: vso-role
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  vaultAuthRef: vault-admin-auth
+  path: auth/kubernetes
+  policies:
+    - vso-db-policy
+  targetServiceAccounts:
+    - serviceAccount: vault-secrets-operator-controller-manager
+      namespaces:
+        - vault-secrets-operator
+  TTL: 1h
+
+---
+# App-reader role — transitional: any SA in mathtrail ns can read DB + KV secrets.
+# Kept alive so existing direct Vault HTTP code continues to work during migration.
+# Remove after all services are on VSO.
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: KubernetesAuthEngineRole
+metadata:
+  name: app-reader-role
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  vaultAuthRef: vault-admin-auth
+  path: auth/kubernetes
+  policies:
+    - app-read-policy
+  targetServiceAccounts:
+    - serviceAccount: "*"
+      namespaces:
+        - mathtrail
+  TTL: 24h
