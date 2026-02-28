@@ -10,6 +10,7 @@
 
 set shell := ["bash", "-c"]
 set dotenv-load := true
+set dotenv-filename := "skaffold.env"
 
 # Path to sibling gitops repository
 # Override via .env for non-standard layout (GITOPS_DIR)
@@ -42,8 +43,7 @@ delete:
 status:
     #!/usr/bin/env bash
     kubectl -n {{argocd_ns}} get applications \
-      -o custom-columns=\
-'NAME:.metadata.name,WAVE:.metadata.annotations.argocd\.argoproj\.io/sync-wave,SYNC:.status.sync.status,HEALTH:.status.health.status' \
+      -o custom-columns='NAME:.metadata.name,WAVE:.metadata.annotations.argocd\.argoproj\.io/sync-wave,SYNC:.status.sync.status,HEALTH:.status.health.status' \
       --sort-by='.metadata.annotations.argocd\.argoproj\.io/sync-wave' 2>/dev/null \
       || echo "ArgoCD is not installed or cluster is unreachable."
 
@@ -82,22 +82,9 @@ _install-argocd:
 
     # If the repo is private — configure access via kubectl (no argocd CLI needed)
     if [ -n "${GITHUB_TOKEN:-}" ]; then
-      echo "  🔑 Configuring private repository access..."
-      kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: infra-repo-creds
-  namespace: {{argocd_ns}}
-  labels:
-    argocd.argoproj.io/secret-type: repository
-stringData:
-  type: git
-  url: https://github.com/MathTrail/infra
-  username: git
-  password: ${GITHUB_TOKEN}
-EOF
-      echo "  ✅ Repository access configured."
+    echo "  🔑 Configuring private repository access..."
+    envsubst < "{{justfile_directory()}}/manifests/argocd-repo-creds.yaml" | kubectl apply -f -
+    echo "  ✅ Repository access configured."
     fi
 
 # Step 2: apply Applications and wait for all waves to complete
