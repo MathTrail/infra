@@ -15,7 +15,7 @@ spec:
     targetRevision: {{ .Values.gitBranch }}
     path: manifests
     directory:
-      include: "{vault-unseal-key-secret.yaml,vault-init-rbac.yaml,vault-init-job.yaml,vault-rbac.yaml,namespace.yaml}"
+      include: "{vault-init-rbac.yaml,vault-init-job.yaml,vault-rbac.yaml,namespace.yaml}"
   destination:
     server: https://kubernetes.default.svc
     namespace: vault
