@@ -7,7 +7,7 @@ Tech Stack: Helm, ArgoCD, Just, Vault Config Operator (VCO), Vault Secrets Opera
 Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.github.io/charts/charts)
 
 # Repo Layout
-- `skaffold.env` — platform constants shared across all MathTrail repos (namespace, registry, chart repo URL, cluster name)
+- `platform.env` — platform constants shared across all MathTrail repos (namespace, registry, chart repo URL, cluster name)
 - `justfile` — developer-facing recipes (`just deploy`, `just delete`)
 - `charts/` — per-component Application-of-Apps Helm charts (each installs as a separate Helm release):
   - `cert-manager/` — ArgoCD Applications for cert-manager + ClusterIssuers
@@ -103,7 +103,7 @@ No application secrets — manages the secret infrastructure itself.
 - Namespace isolation: each component gets its own namespace (e.g. vault, external-secrets, vault-config-operator)
 - Changes to global infrastructure must be tested in local k3d before applying to on-prem/cloud
 - Document all manual steps in justfile recipes
-- `skaffold.env` is the source of truth for platform-wide constants; other repos copy it
+- `platform.env` is the source of truth for platform-wide constants; other repos copy it
 - Vault configuration is declarative via VCO CRs — never use imperative `vault write` commands
 
 # Commit Convention

@@ -11,7 +11,7 @@
 
 set shell := ["bash", "-c"]
 set dotenv-load := true
-set dotenv-filename := "skaffold.env"
+set dotenv-filename := "platform.env"
 
 # Base URL where the Helm chart repo is hosted (GitHub Pages)
 repo_url := env_var("CHARTS_REPO")
@@ -25,7 +25,7 @@ argocd_ns := "argocd"
 # Full bootstrap: ArgoCD + all infrastructure
 deploy: _install-argocd _bootstrap-infra
     @echo ""
-    @echo "✅ Infrastructure ready! You can now run skaffold dev in microservices."
+    @echo "✅ Infrastructure ready! You can now deploy microservices."
 
 # Remove all ArgoCD Applications (cluster and ArgoCD stay)
 delete:

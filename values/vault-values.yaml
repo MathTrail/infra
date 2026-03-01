@@ -13,7 +13,7 @@ server:
 
   ha:
     enabled: true
-    replicas: 3   # override to 1 for local dev via Skaffold profile patch
+    replicas: 3   # override to 1 for local dev
     raft:
       enabled: true
       setNodeId: true
