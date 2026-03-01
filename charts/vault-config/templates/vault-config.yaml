@@ -15,7 +15,7 @@ spec:
   source:
     repoURL: https://github.com/MathTrail/infra
     targetRevision: {{ .Values.gitBranch }}
-    path: vault-config
+    path: charts/vault-config/resources
   destination:
     server: https://kubernetes.default.svc
     namespace: vault-config-operator
