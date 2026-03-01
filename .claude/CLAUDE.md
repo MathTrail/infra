@@ -3,11 +3,10 @@ You are an infrastructure expert working on mathtrail-infra — the umbrella rep
 This repo deploys cluster-level components that all services depend on.
 This is NOT a service — it manages shared infrastructure.
 
-Tech Stack: Helm, Skaffold, Just, Vault Config Operator (VCO), Vault Secrets Operator (VSO)
+Tech Stack: Helm, ArgoCD, Just, Vault Config Operator (VCO), Vault Secrets Operator (VSO)
 Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.github.io/charts/charts)
 
 # Repo Layout
-- `skaffold.yaml` — applies raw manifests + kustomize overlays (kubectl only, phased)
 - `skaffold.env` — platform constants shared across all MathTrail repos (namespace, registry, chart repo URL, cluster name)
 - `justfile` — developer-facing recipes (`just deploy`, `just delete`)
 - `charts/` — per-component Application-of-Apps Helm charts (each installs as a separate Helm release):
@@ -65,16 +64,8 @@ just deploy
             Wave 4: vault-config, vault-secrets-operator
 ```
 
-## skaffold.yaml (kubectl — raw manifests + kustomize)
-```
-Phase 1 (parallel): cert-manager-issuers, vault-prereqs
-Phase 2: vault-init
-Phase 3: vault-config (VCO CRs via kustomize)
-Phase 4: vault-secret-stores (ESO ClusterSecretStores)
-```
-
 # Vault Architecture
-- **HashiCorp Vault** in HA Raft mode (3 replicas prod, 1 replica dev via Skaffold profile)
+- **HashiCorp Vault** in HA Raft mode (3 replicas prod, 1 replica dev)
 - **Shamir unseal**: vault-init Job initializes Vault, unseals with Shamir keys, stores keys in `vault-unseal-key` Secret
 - **VCO** (Vault Config Operator) manages all Vault configuration declaratively via CRs
 - **VSO** (Vault Secrets Operator) syncs Vault secrets into K8s Secrets for pods
@@ -120,7 +111,6 @@ Use Conventional Commits: feat(infra):, fix(infra):, chore(infra):
 Example: feat(infra): add profile-api vault db role via VCO
 
 # Testing Strategy
-Validate: `skaffold diagnose`
 Integration: Deploy to local k3d cluster (`just deploy`), verify all components running
 `kubectl get pods --all-namespaces` to verify
 `kubectl get pods -n vault` to verify Vault pods
