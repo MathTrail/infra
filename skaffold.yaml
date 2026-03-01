@@ -1,89 +1,102 @@
-﻿apiVersion: skaffold/v4beta13
+# kubectl / kustomize manifests only.
+# Helm chart installations are managed by charts/justfile (just install-infra).
+# Run justfile BEFORE skaffold when bootstrapping a fresh cluster.
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: mathtrail-infra
 
 requires:
-  # Phase 1: Deploy operators and controllers (parallel).
+  # Phase 1 (parallel): cert-manager issuers + Vault prereqs.
+  # cert-manager-issuers needs cert-manager Helm installed (justfile Phase A).
+  # vault-prereqs has no Helm dependency — namespaces + unseal-key placeholder.
   - configs:
-      - dapr
-      - vault-operator
-      - external-secrets
-      - telepresence
-  # Phase 2: Deploy Vault instance CR (operator must be ready first).
+      - cert-manager-issuers
+      - vault-prereqs
+  # Phase 2: Vault init RBAC + idempotent init Job.
+  # Needs vault Helm installed + running (justfile Phase D).
   - configs:
-      - vault-instance
-  # Phase 3: Deploy ClusterSecretStores (Vault must be running + configured first).
+      - vault-init
+  # Phase 3: VCO CRs via kustomize.
+  # Needs VCO Helm installed + Vault initialized (justfile Phases E–F).
+  - configs:
+      - vault-config
+  # Phase 4: ESO ClusterSecretStores.
+  # Needs ESO Helm installed + VCO KV engine configured (justfile Phase I).
   - configs:
       - vault-secret-stores
 
 ---
+# cert-manager ClusterIssuers, root CA Certificate, and VCO webhook Certificate CR.
+# Applied after cert-manager Helm chart is installed and its webhook is ready.
+# The vco-webhook-cert Certificate CR creates the webhook-server-cert Secret that
+# the VCO Helm chart expects to find in the vault-config-operator namespace.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: dapr
+  name: cert-manager-issuers
 
 manifests:
   rawYaml:
-    - dapr/namespace.yaml
-    - dapr/components.yaml
-    - dapr/vault-secret-store.yaml
+    - manifests/cert-manager-issuers.yaml
 
 deploy:
-  kubectl:
-    defaultNamespace: "{{.NAMESPACE}}"
-  helm:
-    releases:
-      - name: dapr
-        repo: "{{.CHARTS_REPO}}"
-        remoteChart: dapr
-        namespace: dapr-system
-        createNamespace: true
-        wait: true
+  kubectl: {}
 
 ---
-# Bank-Vaults Operator — manages Vault CRs (init, unseal, configure).
-# Must be deployed before the Vault instance CR.
+# vault-prereqs applies the vault Namespace, the mathtrail app Namespace, and the
+# empty vault-unseal-key Secret placeholder that Kubernetes Seal requires.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: vault-operator
+  name: vault-prereqs
+
+manifests:
+  rawYaml:
+    - manifests/vault-namespace.yaml
+    - manifests/namespace.yaml
+    - manifests/vault-unseal-key-secret.yaml
 
 deploy:
-  helm:
-    releases:
-      - name: vault-operator
-        repo: "{{.CHARTS_REPO}}"
-        remoteChart: vault-operator
-        version: "1.23.4"
-        namespace: vault
-        createNamespace: true
-        valuesFiles:
-          - values/vault-operator-values.yaml
-        wait: true
+  kubectl: {}
 
 ---
-# Vault instance — the Vault CR that the operator reconciles.
-# Includes: persistent storage, auto-unseal, Kubernetes auth, Database + KV engines,
-# ESO policy/role, and startup secrets. Replaces the old vault Helm chart + init Jobs.
+# vault-init applies vault SA RBAC + init Job SA RBAC + idempotent init Job.
+# vault-init-rbac.yaml grants get/create/update/patch on Secrets so the Job can
+# write the Kubernetes Seal root key to the vault-unseal-key Secret.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
-  name: vault-instance
+  name: vault-init
 
 manifests:
   rawYaml:
     - manifests/vault-rbac.yaml
-    - manifests/vault-instance.yaml
+    - manifests/vault-init-rbac.yaml
+    - manifests/vault-init-job.yaml
 
 deploy:
-  kubectl:
-    defaultNamespace: vault
+  kubectl: {}
 
 ---
-# ClusterSecretStores — tell ESO how to connect to Vault.
-# Two stores: one for Database Secrets Engine, one for KV v2.
-# Deployed after Vault is running so ESO can immediately authenticate.
+# VCO CRs — VaultConnection, VaultAuth, engines, policies, K8s auth roles,
+# per-service DB engine config + roles, and seed KV secrets.
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: vault-config
+
+manifests:
+  kustomize:
+    paths:
+      - vault-config
+
+deploy:
+  kubectl: {}
+
+---
+# ESO ClusterSecretStores — tell ESO how to connect to Vault.
+# Two stores: one for the Database Secrets Engine, one for KV v2.
 apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
@@ -95,41 +108,4 @@ manifests:
     - manifests/cluster-secret-store-kv.yaml
 
 deploy:
-  kubectl:
-    defaultNamespace: vault
-
----
-apiVersion: skaffold/v4beta13
-kind: Config
-metadata:
-  name: external-secrets
-
-deploy:
-  helm:
-    releases:
-      - name: external-secrets
-        repo: "{{.CHARTS_REPO}}"
-        remoteChart: external-secrets
-        namespace: external-secrets
-        createNamespace: true
-        valuesFiles:
-          - values/external-secrets-values.yaml
-        wait: true
-
----
-apiVersion: skaffold/v4beta13
-kind: Config
-metadata:
-  name: telepresence
-
-deploy:
-  helm:
-    releases:
-      - name: traffic-manager
-        repo: "{{.CHARTS_REPO}}"
-        remoteChart: telepresence-oss
-        namespace: ambassador
-        createNamespace: true
-        valuesFiles:
-          - values/telepresence-values.yaml
-        wait: true
+  kubectl: {}

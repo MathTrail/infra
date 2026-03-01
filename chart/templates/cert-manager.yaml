@@ -1,0 +1,36 @@
+{{- if .Values.core.deploy }}
+# cert-manager — X.509 certificate lifecycle controller + CA injector.
+# wave 0: no dependencies; must be Healthy before cert-manager CRs (wave 2) can be created.
+# The cainjector sidecar continuously injects CA bundles into webhook configurations.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mathtrail
+  sources:
+    - repoURL: https://MathTrail.github.io/charts/charts
+      chart: cert-manager
+      targetRevision: ">=0.0.0" # latest from vendored repo
+      helm:
+        valueFiles:
+          - $values/values/cert-manager-values.yaml
+    - repoURL: https://github.com/MathTrail/infra
+      targetRevision: {{ .Values.gitBranch }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+{{- end }}

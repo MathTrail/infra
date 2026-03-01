@@ -1,0 +1,33 @@
+installCRDs: true
+replicaCount: 1   # override to 3 for prod HA
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+cainjector:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+
+prometheus:
+  enabled: true
+  podmonitor:
+    enabled: false   # enable when PodMonitor CRD is available (kube-prometheus-stack)

@@ -1,0 +1,15 @@
+replicaCount: 1
+enableMonitoring: false
+
+# cert-manager issues the webhook TLS cert via the vco-webhook-cert Certificate CR
+# (secretName: webhook-server-cert). The cainjector annotation is patched onto the
+# MutatingWebhookConfiguration / ValidatingWebhookConfiguration post-install in the
+# install-infra recipe because the VCO chart does not expose a certManager.enabled value.
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

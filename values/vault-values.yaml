@@ -1,0 +1,63 @@
+server:
+  image:
+    repository: hashicorp/vault
+    tag: "1.19.0"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  ha:
+    enabled: true
+    replicas: 3   # override to 1 for local dev via Skaffold profile patch
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = false
+
+        listener "tcp" {
+          address         = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_disable     = true
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+          retry_join {
+            leader_api_addr = "http://vault-0.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-1.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-2.vault-internal:8200"
+          }
+        }
+
+        service_registration "kubernetes" {}
+
+  dataStorage:
+    enabled: true
+    size: 2Gi
+    accessMode: ReadWriteOnce
+
+  serviceAccount:
+    create: true
+    name: vault
+
+  # Adds system:auth-delegator ClusterRoleBinding for the vault SA.
+  # Required for the Kubernetes auth method to validate SA JWTs via TokenReview.
+  authDelegator:
+    enabled: true
+
+ui:
+  enabled: false
+
+# Agent injector disabled — using VSO (Vault Secrets Operator) instead.
+injector:
+  enabled: false

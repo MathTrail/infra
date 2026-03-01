@@ -1,0 +1,35 @@
+{{- if .Values.core.deploy }}
+# HashiCorp Vault Helm chart — HA Raft (3 replicas) + Kubernetes Seal.
+# sync-wave 1: must be fully running before vault-init (wave 2) can proceed.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mathtrail
+  sources:
+    - repoURL: https://MathTrail.github.io/charts/charts
+      chart: vault
+      targetRevision: ">=0.0.0" # latest from vendored repo
+      helm:
+        valueFiles:
+          - $values/values/vault-values.yaml
+    - repoURL: https://github.com/MathTrail/infra
+      targetRevision: {{ .Values.gitBranch }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+{{- end }}

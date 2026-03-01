@@ -1,0 +1,80 @@
+# PostSync hook for the vault-config-operator ArgoCD Application.
+# Runs after VCO Helm deploys its MutatingWebhookConfiguration and
+# ValidatingWebhookConfiguration. Adds the cert-manager cainjector annotation so that
+# cert-manager continuously maintains the CA bundle in the webhook configurations.
+# The Job waits until cainjector has injected a non-empty bundle before exiting,
+# which keeps wave 3 "in progress" until the bundle is present. Wave 4 (VCO CRs)
+# therefore starts only when the webhook is fully configured and can validate CRs.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vco-cainjector-patcher
+  namespace: vault-config-operator
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vco-cainjector-patcher
+rules:
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+    verbs: ["get", "list", "patch", "annotate"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vco-cainjector-patcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vco-cainjector-patcher
+subjects:
+  - kind: ServiceAccount
+    name: vco-cainjector-patcher
+    namespace: vault-config-operator
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vco-cainjector-patch
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      serviceAccountName: vco-cainjector-patcher
+      restartPolicy: OnFailure
+      containers:
+        - name: patch
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+
+              # Annotate all VCO webhook configurations so cert-manager cainjector
+              # continuously injects and renews the CA bundle.
+              for wh in $(kubectl get mutatingwebhookconfigurations,validatingwebhookconfigurations \
+                          -o name 2>/dev/null | grep vault-config-operator); do
+                kubectl annotate "$wh" \
+                  cert-manager.io/inject-ca-from=vault-config-operator/vco-webhook-cert \
+                  --overwrite
+                echo "Annotated $wh"
+              done
+
+              # Block until cainjector has injected a non-empty CA bundle.
+              # This prevents wave 4 (VCO CRs) from starting before the webhook can validate them.
+              echo "Waiting for cert-manager cainjector to inject CA bundle..."
+              until kubectl get mutatingwebhookconfigurations \
+                vault-config-operator-mutating-webhook-configuration \
+                -o jsonpath='{.webhooks[0].clientConfig.caBundle}' \
+                2>/dev/null | grep -qv '^$'; do
+                sleep 3
+              done
+              echo "CA bundle injected. Wave 4 (VCO CRs) can now proceed safely."

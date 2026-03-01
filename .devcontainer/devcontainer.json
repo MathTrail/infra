@@ -12,8 +12,7 @@
             "version": "1.35.0",
             "minikube": "none"
         },
-        "ghcr.io/eitsupi/devcontainer-features/just:0.1.1": {},
-        "ghcr.io/dapr/cli/dapr-cli:0": {}
+        "ghcr.io/eitsupi/devcontainer-features/just:0.1.1": {}
     },
     "mounts": [
         "source=${localEnv:HOME}${localEnv:USERPROFILE}/.kube,target=/home/vscode/.kube-host,type=bind,consistency=cached,readonly"
