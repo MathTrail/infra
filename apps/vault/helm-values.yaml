@@ -47,7 +47,7 @@ server:
   # → ArgoCD stays Progressing → wave 2 never starts (chicken-and-egg).
   readinessProbe:
     enabled: true
-    path: "/v1/sys/health?standbyok=true&sealedok=true&uninitok=true"
+    path: "/v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200"
     port: 8200
     failureThreshold: 2
     initialDelaySeconds: 5
