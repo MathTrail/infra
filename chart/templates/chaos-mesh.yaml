@@ -6,12 +6,14 @@ kind: Application
 metadata:
   name: chaos-mesh
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: mathtrail
   source:
     repoURL: https://MathTrail.github.io/charts/charts
     chart: chaos-mesh
-    targetRevision: ">=0.0.0" # latest from vendored repo
+    targetRevision: ">=0.0.0"
     helm:
       parameters:
         - name: chaosDaemon.runtime

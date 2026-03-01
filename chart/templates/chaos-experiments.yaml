@@ -6,6 +6,8 @@ kind: Application
 metadata:
   name: chaos-experiments
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: mathtrail
   source:
