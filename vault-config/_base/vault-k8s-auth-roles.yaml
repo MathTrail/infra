@@ -1,4 +1,6 @@
 # ESO role — bound to the external-secrets ServiceAccount.
+# eso-policy: read DB creds + KV secrets (ExternalSecret pull model).
+# eso-write-policy: write to secret/local/* (PushSecret push model from infra-local).
 apiVersion: redhatcop.redhat.io/v1alpha1
 kind: KubernetesAuthEngineRole
 metadata:
@@ -19,6 +21,7 @@ spec:
   path: kubernetes
   policies:
     - eso-policy
+    - eso-write-policy
   targetServiceAccounts:
     - external-secrets
   targetNamespaces:

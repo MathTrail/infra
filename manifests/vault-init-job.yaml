@@ -9,6 +9,10 @@
 #
 # Idempotency: if vault-init-credentials already exists and Vault is already
 # initialized, the Job attempts to unseal (if sealed) and exits 0.
+#
+# Secret seeding is intentionally absent: ESO PushSecrets (in infra-local)
+# push postgres/redis credentials from K8s Secrets to Vault KV after infra-local
+# is deployed. This Job only handles Vault bootstrap, not secret population.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -73,6 +77,25 @@ spec:
                 done
               }
 
+              # Enable KV v2 and Database secret engines.
+              # Must run before VCO starts managing policies/roles against these mounts.
+              # Idempotent: 'already enabled' errors are suppressed.
+              bootstrap_engines() {
+                echo "=== Enabling secret engines ==="
+                if [ -z "${ROOT_TOKEN:-}" ]; then
+                  ROOT_TOKEN=$(kubectl get secret vault-init-credentials -n vault \
+                    -o jsonpath='{.data.root-token}' | base64 -d)
+                fi
+                export VAULT_TOKEN="$ROOT_TOKEN"
+
+                vault secrets enable -path=secret -version=2 kv 2>/dev/null \
+                  || echo "KV v2 engine already enabled"
+                vault secrets enable -path=database database 2>/dev/null \
+                  || echo "database engine already enabled"
+
+                echo "=== Secret engines ready ==="
+              }
+
               # Bootstrap Kubernetes auth so VCO can authenticate via SA token.
               # Solves chicken-and-egg: VCO v0.8+ only supports K8s auth (no token method).
               bootstrap_kubernetes_auth() {
@@ -111,39 +134,6 @@ spec:
                 echo "=== Kubernetes auth bootstrap complete ==="
               }
 
-              # Seed KV v2 secrets for local dev.
-              # VCO VaultSecret CRD (v0.8+) reads FROM Vault, so seed writes are imperative.
-              seed_kv_secrets() {
-                echo "=== Seeding KV secrets for local dev ==="
-                if [ -z "${ROOT_TOKEN:-}" ]; then
-                  ROOT_TOKEN=$(kubectl get secret vault-init-credentials -n vault \
-                    -o jsonpath='{.data.root-token}' | base64 -d)
-                fi
-                export VAULT_TOKEN="$ROOT_TOKEN"
-
-                # Enable KV v2 + database engines (vault-init owns mounts, VCO manages policies/roles)
-                vault secrets enable -path=secret -version=2 kv 2>/dev/null \
-                  || echo "KV v2 engine already enabled"
-                vault secrets enable -path=database database 2>/dev/null \
-                  || echo "database engine already enabled"
-
-                vault kv put secret/local/mathtrail-profile \
-                  db-password=mathtrail \
-                  redis-password=mathtrail
-
-                vault kv put secret/local/mathtrail-identity \
-                  kratos-dsn="postgres://mathtrail:mathtrail@postgres-postgresql:5432/kratos?sslmode=disable" \
-                  hydra-dsn="postgres://mathtrail:mathtrail@postgres-postgresql:5432/hydra?sslmode=disable"
-
-                vault kv put secret/local/mathtrail-task \
-                  db-password=mathtrail
-
-                vault kv put secret/local/mathtrail-llm-taskgen \
-                  llm-api-key="local-dev-placeholder"
-
-                echo "=== KV secrets seeded ==="
-              }
-
               echo "=== Waiting for vault-0 to be reachable ==="
               until vault status -format=json 2>/dev/null | grep -q '"initialized"'; do
                 echo "vault-0 not ready yet, retrying in 5s..."
@@ -162,8 +152,8 @@ spec:
                 fi
                 echo "Vault is initialized and unsealed."
                 unseal_all_replicas
+                bootstrap_engines
                 bootstrap_kubernetes_auth
-                seed_kv_secrets
                 echo "=== vault-init complete (existing cluster) ==="
                 exit 0
               fi
@@ -211,8 +201,8 @@ spec:
               echo "IMPORTANT: Copy unseal keys to offline storage (safe/PGP)."
 
               unseal_all_replicas
+              bootstrap_engines
               bootstrap_kubernetes_auth
-              seed_kv_secrets
               echo "=== vault-init complete (fresh cluster) ==="
           resources:
             requests:
