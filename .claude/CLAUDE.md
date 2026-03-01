@@ -11,7 +11,8 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 - `justfile` — developer-facing recipes (`just deploy`, `just delete`)
 - `charts/` — per-component Application-of-Apps Helm charts (each installs as a separate Helm release):
   - `cert-manager/` — ArgoCD Applications for cert-manager + ClusterIssuers
-  - `vault/` — ArgoCD Applications for Vault server, init, VCO, VSO, and VCO CRs
+  - `vault/` — ArgoCD Applications for Vault server, init, VCO, and VSO
+  - `vault-config/` — ArgoCD Application for VCO Custom Resources (policies, auth roles)
   - `external-secrets/` — ArgoCD Application for External Secrets Operator
   - `chaos-mesh/` — ArgoCD Applications for Chaos Mesh + experiments (deploy: false by default)
   - `storageclass/` — ArgoCD Application for on-prem StorageClass
@@ -27,8 +28,6 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
   - `cluster-secret-store-kv.yaml` — ESO ClusterSecretStore for KV v2
 - `vault-config/` — Kustomize overlay with VCO Custom Resources:
   - `_base/` — VaultConnection, VaultAuth, policies, engine mounts, K8s auth roles, KV seeds
-  - `mentor-api/` — per-service DB engine config + role for Mentor
-  - `profile-api/` — per-service DB engine config + role for Profile
 
 # What Is Currently Deployed
 - **vault-prereqs**: `vault` namespace + `mathtrail` namespace + unseal-key Secret placeholder
@@ -53,9 +52,9 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 ```
 just deploy
   Step 1: _install-argocd  — install ArgoCD + AppProject
-  Step 2: _bootstrap-infra — install 5 component charts (parallel Helm releases):
-            cert-manager-apps, vault-apps, external-secrets-apps,
-            storageclass-apps, chaos-mesh-apps
+  Step 2: _bootstrap-infra — install 6 component charts (parallel Helm releases):
+            cert-manager-apps, vault-apps, vault-config-apps,
+            external-secrets-apps, storageclass-apps, chaos-mesh-apps
           then wait for ArgoCD to sync all Applications by wave:
             Wave 0: cert-manager
             Wave 1: vault, external-secrets

@@ -2,7 +2,7 @@
 #
 # Usage:
 #   just deploy          — full bootstrap: ArgoCD + infrastructure
-#   just delete          — remove ArgoCD Applications + clean stuck resources
+#   just delete          — remove ArgoCD Applications (ordered: VCO CRs first)
 #   just delete-all      — remove ArgoCD + Applications (full teardown)
 #   just status          — show status of all infrastructure Applications
 #   just argocd-ui       — open ArgoCD UI at localhost:8080
@@ -32,41 +32,47 @@ delete:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "🗑️  Removing ArgoCD Applications..."
-    for release in cert-manager-apps vault-apps external-secrets-apps storageclass-apps chaos-mesh-apps; do
+    # Phase 1: Remove vault-config first (VCO is still running → finalizers clear naturally)
+    echo "🗑️  Removing vault-config (VCO CRs)..."
+    helm uninstall vault-config-apps --namespace {{argocd_ns}} 2>/dev/null || true
+
+    # Wait for VCO CRs to be fully removed (VCO controller handles finalizers)
+    printf "  ⏳ Waiting for VCO CRs to clear..."
+    elapsed=0
+    while [ $elapsed -lt 60 ]; do
+      remaining=$(kubectl -n {{argocd_ns}} get application vault-config \
+        -o name 2>/dev/null || echo "")
+      if [ -z "$remaining" ]; then
+        echo " done"
+        break
+      fi
+      sleep 5
+      elapsed=$((elapsed + 5))
+    done
+    if [ $elapsed -ge 60 ]; then
+      echo " timeout (forcing)"
+      # Fallback: strip VCO CR finalizers if controller couldn't handle them
+      for crd in $(kubectl api-resources --api-group=redhatcop.redhat.io -o name 2>/dev/null); do
+        for name in $(kubectl get "$crd" -n vault-config-operator --no-headers \
+                        -o custom-columns=':metadata.name' 2>/dev/null); do
+          [ -z "$name" ] && continue
+          kubectl -n vault-config-operator patch "$crd" "$name" \
+            --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+        done
+      done
+      # Strip Application finalizer if still stuck
+      kubectl -n {{argocd_ns}} patch application vault-config \
+        --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+    fi
+
+    # Phase 2: Remove remaining app-of-apps releases
+    echo "🗑️  Removing remaining Applications..."
+    for release in cert-manager-apps external-secrets-apps storageclass-apps chaos-mesh-apps vault-apps; do
         helm uninstall "$release" --namespace {{argocd_ns}} 2>/dev/null || true
     done
-
-    # Give ArgoCD time to start processing deletions
     sleep 5
 
-    echo "🧹 Cleaning resources..."
-
-    # 1. Remove finalizers from VCO CRs (controller is gone → CRs stuck)
-    for crd in $(kubectl api-resources --api-group=redhatcop.redhat.io -o name 2>/dev/null); do
-      for name in $(kubectl get "$crd" -n vault-config-operator --no-headers \
-                      -o custom-columns=':metadata.name' 2>/dev/null); do
-        [ -z "$name" ] && continue
-        echo "  Removing finalizer: $crd/$name"
-        kubectl -n vault-config-operator patch "$crd" "$name" \
-          --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
-      done
-    done
-
-    # 2. Remove finalizers from stuck ArgoCD Applications (deletionTimestamp set)
-    for app in $(kubectl -n {{argocd_ns}} get applications --no-headers \
-                   -o custom-columns=':metadata.name' 2>/dev/null); do
-      [ -z "$app" ] && continue
-      ts=$(kubectl -n {{argocd_ns}} get application "$app" \
-             -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null || echo "")
-      if [ -n "$ts" ]; then
-        echo "  Removing finalizer: application/$app"
-        kubectl -n {{argocd_ns}} patch application "$app" \
-          --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
-      fi
-    done
-
-    # 3. Wait for Terminating namespaces to clear
+    # Phase 3: Wait for Terminating namespaces
     for ns in vault-config-operator vault vault-secrets-operator cert-manager external-secrets chaos-mesh; do
       phase=$(kubectl get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
       if [ "$phase" = "Terminating" ]; then
@@ -147,7 +153,7 @@ _bootstrap-infra:
     echo "🌊 Step 2/2 — Infrastructure via ArgoCD (sync-waves 0 → 4)..."
 
     GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-    for chart in cert-manager vault external-secrets storageclass chaos-mesh; do
+    for chart in cert-manager vault vault-config external-secrets storageclass chaos-mesh; do
         helm upgrade --install "${chart}-apps" "{{justfile_directory()}}/charts/${chart}" \
           --namespace {{argocd_ns}} \
           --set gitBranch="$GIT_BRANCH" \
