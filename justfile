@@ -2,7 +2,7 @@
 #
 # Usage:
 #   just deploy          — full bootstrap: ArgoCD + infrastructure
-#   just delete          — remove ArgoCD Applications (cluster stays)
+#   just delete          — remove ArgoCD Applications + clean stuck resources
 #   just delete-all      — remove ArgoCD + Applications (full teardown)
 #   just status          — show status of all infrastructure Applications
 #   just argocd-ui       — open ArgoCD UI at localhost:8080
@@ -31,10 +31,54 @@ deploy: _install-argocd _bootstrap-infra
 delete:
     #!/usr/bin/env bash
     set -euo pipefail
+
     echo "🗑️  Removing ArgoCD Applications..."
     for release in cert-manager-apps vault-apps external-secrets-apps storageclass-apps chaos-mesh-apps; do
         helm uninstall "$release" --namespace {{argocd_ns}} 2>/dev/null || true
     done
+
+    # Give ArgoCD time to start processing deletions
+    sleep 5
+
+    echo "🧹 Cleaning resources..."
+
+    # 1. Remove finalizers from VCO CRs (controller is gone → CRs stuck)
+    for crd in $(kubectl api-resources --api-group=redhatcop.redhat.io -o name 2>/dev/null); do
+      for name in $(kubectl get "$crd" -n vault-config-operator --no-headers \
+                      -o custom-columns=':metadata.name' 2>/dev/null); do
+        [ -z "$name" ] && continue
+        echo "  Removing finalizer: $crd/$name"
+        kubectl -n vault-config-operator patch "$crd" "$name" \
+          --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+      done
+    done
+
+    # 2. Remove finalizers from stuck ArgoCD Applications (deletionTimestamp set)
+    for app in $(kubectl -n {{argocd_ns}} get applications --no-headers \
+                   -o custom-columns=':metadata.name' 2>/dev/null); do
+      [ -z "$app" ] && continue
+      ts=$(kubectl -n {{argocd_ns}} get application "$app" \
+             -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null || echo "")
+      if [ -n "$ts" ]; then
+        echo "  Removing finalizer: application/$app"
+        kubectl -n {{argocd_ns}} patch application "$app" \
+          --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+      fi
+    done
+
+    # 3. Wait for Terminating namespaces to clear
+    for ns in vault-config-operator vault vault-secrets-operator cert-manager external-secrets chaos-mesh; do
+      phase=$(kubectl get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+      if [ "$phase" = "Terminating" ]; then
+        printf "  Waiting for namespace/%s... " "$ns"
+        if kubectl wait --for=delete namespace/"$ns" --timeout=30s 2>/dev/null; then
+          echo "done"
+        else
+          echo "still stuck (may need manual intervention)"
+        fi
+      fi
+    done
+
     echo "✅ Applications removed. Cluster and ArgoCD keep running."
 
 # Remove ArgoCD + all Applications (full teardown, cluster stays)
