@@ -20,10 +20,11 @@ spec:
   policies:
     - eso-policy
   targetServiceAccounts:
-    - serviceAccount: external-secrets
-      namespaces:
-        - external-secrets
-  TTL: 1h
+    - external-secrets
+  targetNamespaces:
+    targetNamespaces:
+      - external-secrets
+  tokenTTL: 3600
 
 ---
 # VSO role — bound to the vault-secrets-operator controller SA.
@@ -49,10 +50,11 @@ spec:
   policies:
     - vso-db-policy
   targetServiceAccounts:
-    - serviceAccount: vault-secrets-operator-controller-manager
-      namespaces:
-        - vault-secrets-operator
-  TTL: 1h
+    - vault-secrets-operator-controller-manager
+  targetNamespaces:
+    targetNamespaces:
+      - vault-secrets-operator
+  tokenTTL: 3600
 
 ---
 # App-reader role — transitional: any SA in mathtrail ns can read DB + KV secrets.
@@ -79,7 +81,8 @@ spec:
   policies:
     - app-read-policy
   targetServiceAccounts:
-    - serviceAccount: "*"
-      namespaces:
-        - mathtrail
-  TTL: 24h
+    - "*"
+  targetNamespaces:
+    targetNamespaces:
+      - mathtrail
+  tokenTTL: 86400
