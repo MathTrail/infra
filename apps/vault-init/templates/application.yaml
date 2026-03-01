@@ -15,9 +15,7 @@ spec:
   source:
     repoURL: https://github.com/MathTrail/infra
     targetRevision: {{ .Values.gitBranch }}
-    path: manifests
-    directory:
-      include: "{vault-init-rbac.yaml,vault-init-job.yaml,vault-rbac.yaml,namespace.yaml}"
+    path: apps/vault-init/manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: vault

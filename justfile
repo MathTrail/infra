@@ -136,13 +136,13 @@ _install-argocd:
     echo "  ✅ ArgoCD installed."
 
     # AppProject mathtrail — must exist before applying Applications
-    kubectl apply -f "{{justfile_directory()}}/manifests/argocd-project.yaml"
+    kubectl apply -f "{{justfile_directory()}}/bootstrap/argocd-project.yaml"
     echo "  ✅ AppProject 'mathtrail' created."
 
     # If the repo is private — configure access via kubectl (no argocd CLI needed)
     if [ -n "${GITHUB_TOKEN:-}" ]; then
     echo "  🔑 Configuring private repository access..."
-    envsubst < "{{justfile_directory()}}/manifests/argocd-repo-creds.yaml" | kubectl apply -f -
+    envsubst < "{{justfile_directory()}}/bootstrap/argocd-repo-creds.yaml" | kubectl apply -f -
     echo "  ✅ Repository access configured."
     fi
 
@@ -220,8 +220,9 @@ _bootstrap-infra:
     _wait_app vault-config-operator 360
 
     echo "  Wave 4:"
-    _wait_app vault-config           360
-    _wait_app vault-secrets-operator 360
+    _wait_app vault-config              360
+    _wait_app vault-secrets-operator    360
+    _wait_app external-secrets-config   240
 
     echo ""
     echo "  All waves completed."

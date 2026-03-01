@@ -41,6 +41,20 @@ server:
 
         service_registration "kubernetes" {}
 
+  # Accept sealed and uninitialized states as "ready" so ArgoCD marks the
+  # Application Healthy and wave 2 (vault-init) can run to unseal Vault.
+  # Without this, the health check returns non-zero when sealed → pods are 0/1
+  # → ArgoCD stays Progressing → wave 2 never starts (chicken-and-egg).
+  readinessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true&sealedok=true&uninitok=true"
+    port: 8200
+    failureThreshold: 2
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    successThreshold: 1
+    timeoutSeconds: 3
+
   dataStorage:
     enabled: true
     size: 2Gi

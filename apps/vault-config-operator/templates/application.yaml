@@ -24,9 +24,7 @@ spec:
       ref: values
     - repoURL: https://github.com/MathTrail/infra
       targetRevision: {{ .Values.gitBranch }}
-      path: manifests
-      directory:
-        include: "vco-cainjector-patch-job.yaml"
+      path: apps/vault-config-operator/manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: vault-config-operator

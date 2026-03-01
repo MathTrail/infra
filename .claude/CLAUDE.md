@@ -9,28 +9,23 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 # Repo Layout
 - `platform.env` — platform constants shared across all MathTrail repos (namespace, registry, chart repo URL, cluster name)
 - `justfile` — developer-facing recipes (`just deploy`, `just delete`)
+- `bootstrap/` — raw K8s YAML applied by `kubectl apply` before ArgoCD starts (true Layer 0):
+  - `argocd-project.yaml` — AppProject `mathtrail`
+  - `argocd-repo-creds.yaml` — private repo access Secret (conditional on GITHUB_TOKEN)
 - `apps/` — one self-contained folder per ArgoCD Application (each is a minimal Helm chart):
   - `cert-manager/` — cert-manager controller (wave 0, multi-source with helm-values.yaml)
-  - `cert-manager-config/` — ClusterIssuers from manifests/ (wave 2)
+  - `cert-manager-config/` — ClusterIssuers + CA + VCO webhook cert (wave 2, manifests/ subdir)
   - `vault/` — Vault server HA Raft (wave 1, multi-source with helm-values.yaml)
-  - `vault-init/` — RBAC + init Job from manifests/ (wave 2)
-  - `vault-config-operator/` — VCO operator (wave 3, multi-source with helm-values.yaml + manifest)
+  - `vault-init/` — RBAC + init Job + unseal-key placeholder (wave 2, manifests/ subdir)
+  - `vault-config-operator/` — VCO operator (wave 3, multi-source with helm-values.yaml + manifests/ subdir)
   - `vault-config/` — VCO CRs: policies + K8s auth roles (wave 4, resources/ subdir)
   - `vault-secrets-operator/` — VSO operator (wave 4, multi-source with helm-values.yaml)
   - `external-secrets/` — ESO operator (wave 1, single-source chart)
+  - `external-secrets-config/` — ClusterSecretStores for Vault backends (wave 4, manifests/ subdir)
   - `storageclass/` — on-prem StorageClass from gitops repo
   - `chaos-mesh/` — Chaos Mesh (deploy: false by default)
   - `chaos-experiments/` — chaos experiments from gitops repo (deploy: false by default)
-  Each folder contains: Chart.yaml, values.yaml, templates/application.yaml, optional helm-values.yaml, optional resources/
-- `manifests/` — raw K8s YAML:
-  - `vault-namespace.yaml` — creates the `vault` namespace
-  - `namespace.yaml` — creates the `mathtrail` application namespace
-  - `vault-unseal-key-secret.yaml` — empty unseal-key Secret placeholder for Vault startup
-  - `vault-rbac.yaml` — ServiceAccount, Roles, ClusterRoleBinding for Vault
-  - `vault-init-rbac.yaml` — RBAC for the vault-init Job
-  - `vault-init-job.yaml` — idempotent Job that initializes + unseals Vault
-  - `cluster-secret-store.yaml` — ESO ClusterSecretStore for Database Secrets Engine
-  - `cluster-secret-store-kv.yaml` — ESO ClusterSecretStore for KV v2
+  Each folder contains: Chart.yaml, values.yaml, templates/application.yaml, optional helm-values.yaml, optional manifests/ or resources/
 
 # What Is Currently Deployed
 - **vault-prereqs**: `vault` namespace + `mathtrail` namespace + unseal-key Secret placeholder
@@ -61,7 +56,7 @@ just deploy
             Wave 1: vault, external-secrets
             Wave 2: cert-manager-config, vault-init
             Wave 3: vault-config-operator
-            Wave 4: vault-config, vault-secrets-operator
+            Wave 4: vault-config, vault-secrets-operator, external-secrets-config
 ```
 
 # Vault Architecture
