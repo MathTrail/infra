@@ -7,10 +7,16 @@ Tech Stack: Helm, Skaffold, Just, Vault Config Operator (VCO), Vault Secrets Ope
 Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.github.io/charts/charts)
 
 # Repo Layout
-- `skaffold.yaml` — orchestrates deploy: Helm releases + raw manifests (multi-config, phased)
+- `skaffold.yaml` — applies raw manifests + kustomize overlays (kubectl only, phased)
 - `skaffold.env` — platform constants shared across all MathTrail repos (namespace, registry, chart repo URL, cluster name)
 - `justfile` — developer-facing recipes (`just deploy`, `just delete`)
-- `values/` — Helm values for: vault, external-secrets, telepresence
+- `charts/` — per-component Application-of-Apps Helm charts (each installs as a separate Helm release):
+  - `cert-manager/` — ArgoCD Applications for cert-manager + ClusterIssuers
+  - `vault/` — ArgoCD Applications for Vault server, init, VCO, VSO, and VCO CRs
+  - `external-secrets/` — ArgoCD Application for External Secrets Operator
+  - `chaos-mesh/` — ArgoCD Applications for Chaos Mesh + experiments (deploy: false by default)
+  - `storageclass/` — ArgoCD Application for on-prem StorageClass
+- `values/` — Helm values passed to upstream charts via ArgoCD valueFiles
 - `manifests/` — raw K8s YAML:
   - `vault-namespace.yaml` — creates the `vault` namespace
   - `namespace.yaml` — creates the `mathtrail` application namespace
@@ -42,16 +48,29 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 - **Two ClusterSecretStores** (`vault-backend` for database, `vault-kv-backend` for KV v2)
 - **Telepresence** traffic-manager (Helm release into `ambassador` namespace)
 
-# Skaffold Deploy Chain
+# Deploy Chain
+
+## justfile (Helm — ArgoCD Application CRs)
 ```
-mathtrail-infra (top-level)
-  requires:
-    Phase 1 (parallel): vault-prereqs, external-secrets, telepresence
-    Phase 2: vault (HashiCorp Vault Helm chart, needs namespace + unseal-key)
-    Phase 3: vault-init (init Job — initializes + unseals)
-    Phase 4: vault-config-operator (VCO — needs Vault initialized)
-    Phase 5 (parallel): vault-config (VCO CRs), vault-secrets-operator (VSO)
-    Phase 6: vault-secret-stores (ESO ClusterSecretStores — needs KV engine configured)
+just deploy
+  Step 1: _install-argocd  — install ArgoCD + AppProject
+  Step 2: _bootstrap-infra — install 5 component charts (parallel Helm releases):
+            cert-manager-apps, vault-apps, external-secrets-apps,
+            storageclass-apps, chaos-mesh-apps
+          then wait for ArgoCD to sync all Applications by wave:
+            Wave 0: cert-manager
+            Wave 1: vault, external-secrets
+            Wave 2: cert-manager-config, vault-init
+            Wave 3: vault-config-operator
+            Wave 4: vault-config, vault-secrets-operator
+```
+
+## skaffold.yaml (kubectl — raw manifests + kustomize)
+```
+Phase 1 (parallel): cert-manager-issuers, vault-prereqs
+Phase 2: vault-init
+Phase 3: vault-config (VCO CRs via kustomize)
+Phase 4: vault-secret-stores (ESO ClusterSecretStores)
 ```
 
 # Vault Architecture

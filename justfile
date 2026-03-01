@@ -32,7 +32,9 @@ delete:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "🗑️  Removing ArgoCD Applications..."
-    helm uninstall infra-apps --namespace {{argocd_ns}} 2>/dev/null || true
+    for release in cert-manager-apps vault-apps external-secrets-apps storageclass-apps chaos-mesh-apps; do
+        helm uninstall "$release" --namespace {{argocd_ns}} 2>/dev/null || true
+    done
     echo "✅ Applications removed. Cluster and ArgoCD keep running."
 
 # Remove ArgoCD + all Applications (full teardown, cluster stays)
@@ -100,10 +102,13 @@ _bootstrap-infra:
     echo ""
     echo "🌊 Step 2/2 — Infrastructure via ArgoCD (sync-waves 0 → 4)..."
 
-    helm upgrade --install infra-apps "{{justfile_directory()}}/chart" \
-      --namespace {{argocd_ns}} \
-      --set gitBranch="$(git rev-parse --abbrev-ref HEAD)" \
-      --timeout 60s
+    GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+    for chart in cert-manager vault external-secrets storageclass chaos-mesh; do
+        helm upgrade --install "${chart}-apps" "{{justfile_directory()}}/charts/${chart}" \
+          --namespace {{argocd_ns}} \
+          --set gitBranch="$GIT_BRANCH" \
+          --timeout 60s
+    done
     echo "  Applications applied. ArgoCD sync in progress..."
 
     # Wait for Applications sequentially by wave for clear progress output

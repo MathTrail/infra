@@ -1,4 +1,4 @@
-{{- if .Values.core.deploy }}
+{{- if .Values.deploy }}
 # cert-manager — X.509 certificate lifecycle controller + CA injector.
 # wave 0: no dependencies; must be Healthy before cert-manager CRs (wave 2) can be created.
 # The cainjector sidecar continuously injects CA bundles into webhook configurations.

@@ -1,4 +1,4 @@
-{{- if .Values.core.deploy }}
+{{- if .Values.deploy }}
 # Vault Config Operator (VCO) — Red Hat Community of Practice.
 # wave 3: runs after vault-init (wave 2) and cert-manager-config (wave 2).
 apiVersion: argoproj.io/v1alpha1

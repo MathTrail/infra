@@ -1,5 +1,0 @@
-apiVersion: v2
-name: infra-apps
-description: ArgoCD Application-of-Apps for MathTrail infrastructure
-type: application
-version: 0.1.0

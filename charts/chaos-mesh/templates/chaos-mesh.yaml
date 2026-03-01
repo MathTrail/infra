@@ -1,6 +1,6 @@
-{{- if .Values.chaos.deploy }}
+{{- if .Values.deploy }}
 # Chaos Mesh — fault injection platform for Kubernetes.
-# Requires chaos.deploy=true (disabled by default, enable on staging).
+# Requires deploy=true (disabled by default, enable on staging).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

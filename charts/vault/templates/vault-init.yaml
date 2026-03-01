@@ -1,10 +1,10 @@
-{{- if .Values.core.deploy }}
-# cert-manager ClusterIssuers, root CA Certificate, and VCO webhook Certificate CR.
-# wave 2: cert-manager (wave 0) must be Healthy. Runs in parallel with vault-init.
+{{- if .Values.deploy }}
+# Vault initialization resources — applied after the Vault StatefulSet is ready.
+# sync-wave 2: runs after vault (wave 1) is healthy.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cert-manager-config
+  name: vault-init
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "2"
@@ -17,10 +17,10 @@ spec:
     targetRevision: {{ .Values.gitBranch }}
     path: manifests
     directory:
-      include: "cert-manager-issuers.yaml"
+      include: "{vault-init-rbac.yaml,vault-init-job.yaml,vault-rbac.yaml,namespace.yaml}"
   destination:
     server: https://kubernetes.default.svc
-    namespace: cert-manager
+    namespace: vault
   syncPolicy:
     automated:
       prune: true

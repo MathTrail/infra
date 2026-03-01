@@ -1,6 +1,6 @@
-{{- if .Values.chaos.deploy }}
+{{- if .Values.deploy }}
 # Chaos experiments — scheduled fault injection (pod-kill, network-delay).
-# Requires chaos.deploy=true (disabled by default, enable on staging).
+# Requires deploy=true (disabled by default, enable on staging).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

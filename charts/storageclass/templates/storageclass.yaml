@@ -1,4 +1,4 @@
-{{- if .Values.storageclass.deploy }}
+{{- if .Values.deploy }}
 # StorageClass for on-prem environment.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
