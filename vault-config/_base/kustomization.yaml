@@ -1,4 +1,3 @@
 resources:
-  - vault-engines.yaml
   - vault-policies.yaml
   - vault-k8s-auth-roles.yaml

@@ -121,7 +121,7 @@ spec:
                 fi
                 export VAULT_TOKEN="$ROOT_TOKEN"
 
-                # Enable KV v2 + database engines (idempotent — VCO SecretEngineMount CRs reconcile later)
+                # Enable KV v2 + database engines (vault-init owns mounts, VCO manages policies/roles)
                 vault secrets enable -path=secret -version=2 kv 2>/dev/null \
                   || echo "KV v2 engine already enabled"
                 vault secrets enable -path=database database 2>/dev/null \
