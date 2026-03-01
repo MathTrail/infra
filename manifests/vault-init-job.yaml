@@ -52,7 +52,6 @@ spec:
               # Unseal all HA replicas that are sealed
               unseal_all_replicas() {
                 echo "=== Unsealing remaining HA replicas ==="
-                # Discover replicas from the StatefulSet
                 REPLICAS=$(kubectl get statefulset vault -n vault \
                   -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "1")
                 for idx in $(seq 1 $((REPLICAS - 1))); do
@@ -74,6 +73,75 @@ spec:
                 done
               }
 
+              # Bootstrap Kubernetes auth so VCO can authenticate via SA token.
+              # Solves chicken-and-egg: VCO v0.8+ only supports K8s auth (no token method).
+              bootstrap_kubernetes_auth() {
+                echo "=== Bootstrapping Kubernetes auth for VCO ==="
+                if [ -z "${ROOT_TOKEN:-}" ]; then
+                  ROOT_TOKEN=$(kubectl get secret vault-init-credentials -n vault \
+                    -o jsonpath='{.data.root-token}' | base64 -d)
+                fi
+                export VAULT_TOKEN="$ROOT_TOKEN"
+
+                vault auth enable kubernetes 2>/dev/null \
+                  || echo "kubernetes auth already enabled"
+
+                vault write auth/kubernetes/config \
+                  kubernetes_host="https://kubernetes.default.svc:443"
+
+                vault policy write vco-admin - <<'POLICY'
+              # VCO admin — manages auth roles, policies, secret engines, KV seeds
+              path "sys/auth/*"     { capabilities = ["create","read","update","delete","list","sudo"] }
+              path "sys/mounts/*"   { capabilities = ["create","read","update","delete","list"] }
+              path "sys/policies/*" { capabilities = ["create","read","update","delete","list"] }
+              path "sys/policy/*"   { capabilities = ["create","read","update","delete","list"] }
+              path "auth/*"         { capabilities = ["create","read","update","delete","list","sudo"] }
+              path "database/*"     { capabilities = ["create","read","update","delete","list"] }
+              path "secret/*"       { capabilities = ["create","read","update","delete","list"] }
+              POLICY
+
+                vault write auth/kubernetes/role/vco-admin \
+                  bound_service_account_names=controller-manager \
+                  bound_service_account_namespaces=vault-config-operator \
+                  policies=vco-admin \
+                  ttl=1h
+
+                echo "=== Kubernetes auth bootstrap complete ==="
+              }
+
+              # Seed KV v2 secrets for local dev.
+              # VCO VaultSecret CRD (v0.8+) reads FROM Vault, so seed writes are imperative.
+              seed_kv_secrets() {
+                echo "=== Seeding KV secrets for local dev ==="
+                if [ -z "${ROOT_TOKEN:-}" ]; then
+                  ROOT_TOKEN=$(kubectl get secret vault-init-credentials -n vault \
+                    -o jsonpath='{.data.root-token}' | base64 -d)
+                fi
+                export VAULT_TOKEN="$ROOT_TOKEN"
+
+                # Enable KV v2 + database engines (idempotent — VCO SecretEngineMount CRs reconcile later)
+                vault secrets enable -path=secret -version=2 kv 2>/dev/null \
+                  || echo "KV v2 engine already enabled"
+                vault secrets enable -path=database database 2>/dev/null \
+                  || echo "database engine already enabled"
+
+                vault kv put secret/local/mathtrail-profile \
+                  db-password=mathtrail \
+                  redis-password=mathtrail
+
+                vault kv put secret/local/mathtrail-identity \
+                  kratos-dsn="postgres://mathtrail:mathtrail@postgres-postgresql:5432/kratos?sslmode=disable" \
+                  hydra-dsn="postgres://mathtrail:mathtrail@postgres-postgresql:5432/hydra?sslmode=disable"
+
+                vault kv put secret/local/mathtrail-task \
+                  db-password=mathtrail
+
+                vault kv put secret/local/mathtrail-llm-taskgen \
+                  llm-api-key="local-dev-placeholder"
+
+                echo "=== KV secrets seeded ==="
+              }
+
               echo "=== Waiting for vault-0 to be reachable ==="
               until vault status -format=json 2>/dev/null | grep -q '"initialized"'; do
                 echo "vault-0 not ready yet, retrying in 5s..."
@@ -90,9 +158,11 @@ spec:
                   echo "Vault is sealed — attempting unseal..."
                   unseal_vault
                 fi
-                echo "Vault is initialized and unsealed. Nothing to do."
+                echo "Vault is initialized and unsealed."
                 unseal_all_replicas
-                echo "vault-init-credentials exists. Nothing to do."
+                bootstrap_kubernetes_auth
+                seed_kv_secrets
+                echo "=== vault-init complete (existing cluster) ==="
                 exit 0
               fi
 
@@ -139,6 +209,9 @@ spec:
               echo "IMPORTANT: Copy unseal keys to offline storage (safe/PGP)."
 
               unseal_all_replicas
+              bootstrap_kubernetes_auth
+              seed_kv_secrets
+              echo "=== vault-init complete (fresh cluster) ==="
           resources:
             requests:
               cpu: 50m

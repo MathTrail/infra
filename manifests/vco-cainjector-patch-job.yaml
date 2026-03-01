@@ -72,8 +72,8 @@ spec:
               # This prevents wave 4 (VCO CRs) from starting before the webhook can validate them.
               echo "Waiting for cert-manager cainjector to inject CA bundle..."
               until kubectl get mutatingwebhookconfigurations \
-                -l app.kubernetes.io/instance=vault-config-operator \
-                -o jsonpath='{.items[0].webhooks[0].clientConfig.caBundle}' \
+                vault-config-operator-mutating-webhook-configuration \
+                -o jsonpath='{.webhooks[0].clientConfig.caBundle}' \
                 2>/dev/null | grep -qv '^$'; do
                 sleep 3
               done
