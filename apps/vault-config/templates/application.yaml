@@ -1,0 +1,28 @@
+{{- if .Values.deploy }}
+# VCO configuration CRs — policies and Kubernetes auth roles.
+# wave 4: parallel with vault-secrets-operator.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mathtrail
+  source:
+    repoURL: https://github.com/MathTrail/infra
+    targetRevision: {{ .Values.gitBranch }}
+    path: apps/vault-config/resources
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault-config-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}

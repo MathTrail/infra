@@ -9,14 +9,19 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 # Repo Layout
 - `platform.env` — platform constants shared across all MathTrail repos (namespace, registry, chart repo URL, cluster name)
 - `justfile` — developer-facing recipes (`just deploy`, `just delete`)
-- `charts/` — per-component Application-of-Apps Helm charts (each installs as a separate Helm release):
-  - `cert-manager/` — ArgoCD Applications for cert-manager + ClusterIssuers
-  - `vault/` — ArgoCD Applications for Vault server, init, VCO, and VSO
-  - `vault-config/` — ArgoCD Application for VCO Custom Resources (policies, auth roles)
-  - `external-secrets/` — ArgoCD Application for External Secrets Operator
-  - `chaos-mesh/` — ArgoCD Applications for Chaos Mesh + experiments (deploy: false by default)
-  - `storageclass/` — ArgoCD Application for on-prem StorageClass
-- `values/` — Helm values passed to upstream charts via ArgoCD valueFiles
+- `apps/` — one self-contained folder per ArgoCD Application (each is a minimal Helm chart):
+  - `cert-manager/` — cert-manager controller (wave 0, multi-source with helm-values.yaml)
+  - `cert-manager-config/` — ClusterIssuers from manifests/ (wave 2)
+  - `vault/` — Vault server HA Raft (wave 1, multi-source with helm-values.yaml)
+  - `vault-init/` — RBAC + init Job from manifests/ (wave 2)
+  - `vault-config-operator/` — VCO operator (wave 3, multi-source with helm-values.yaml + manifest)
+  - `vault-config/` — VCO CRs: policies + K8s auth roles (wave 4, resources/ subdir)
+  - `vault-secrets-operator/` — VSO operator (wave 4, multi-source with helm-values.yaml)
+  - `external-secrets/` — ESO operator (wave 1, single-source chart)
+  - `storageclass/` — on-prem StorageClass from gitops repo
+  - `chaos-mesh/` — Chaos Mesh (deploy: false by default)
+  - `chaos-experiments/` — chaos experiments from gitops repo (deploy: false by default)
+  Each folder contains: Chart.yaml, values.yaml, templates/application.yaml, optional helm-values.yaml, optional resources/
 - `manifests/` — raw K8s YAML:
   - `vault-namespace.yaml` — creates the `vault` namespace
   - `namespace.yaml` — creates the `mathtrail` application namespace
@@ -26,8 +31,6 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
   - `vault-init-job.yaml` — idempotent Job that initializes + unseals Vault
   - `cluster-secret-store.yaml` — ESO ClusterSecretStore for Database Secrets Engine
   - `cluster-secret-store-kv.yaml` — ESO ClusterSecretStore for KV v2
-- `vault-config/` — Kustomize overlay with VCO Custom Resources:
-  - `_base/` — VaultConnection, VaultAuth, policies, engine mounts, K8s auth roles, KV seeds
 
 # What Is Currently Deployed
 - **vault-prereqs**: `vault` namespace + `mathtrail` namespace + unseal-key Secret placeholder
@@ -35,7 +38,7 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 - **vault-init**: RBAC + idempotent init Job (initializes cluster, unseals with Shamir keys)
 - **Vault Config Operator (VCO)** (Helm release into `vault-config-operator` namespace)
   - Reconciles VaultConnection, VaultAuth, Policy, SecretEngineMount, DatabaseSecretEngineRole, etc.
-- **VCO Custom Resources** (Kustomize — `vault-config/`):
+- **VCO Custom Resources** (`apps/vault-config/resources/`):
   - Kubernetes auth method (ESO role + app-reader role + db-admin role)
   - Database Secrets Engine mount + per-service configs/roles
   - KV v2 Secrets Engine + seed secrets
@@ -52,9 +55,7 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 ```
 just deploy
   Step 1: _install-argocd  — install ArgoCD + AppProject
-  Step 2: _bootstrap-infra — install 6 component charts (parallel Helm releases):
-            cert-manager-apps, vault-apps, vault-config-apps,
-            external-secrets-apps, storageclass-apps, chaos-mesh-apps
+  Step 2: _bootstrap-infra — install all apps/* as Helm releases (each wraps one ArgoCD Application):
           then wait for ArgoCD to sync all Applications by wave:
             Wave 0: cert-manager
             Wave 1: vault, external-secrets
@@ -70,8 +71,8 @@ just deploy
 - **VSO** (Vault Secrets Operator) syncs Vault secrets into K8s Secrets for pods
   - Pods consume credentials via `secretKeyRef` env vars
   - VSO triggers rolling restarts on lease renewal — no in-process refresh needed
-- **Per-service DB configs** are declared as VCO CRs in `vault-config/{service}/`
-- Adding a new service: add a new Kustomize overlay in `vault-config/` — no Helm changes
+- **Per-service DB configs** are declared as VCO CRs in `apps/vault-config/resources/{service}/`
+- Adding a new service: add a new resource file in `apps/vault-config/resources/` — no Helm changes
 
 # Secret Management Architecture (Platform Standard)
 

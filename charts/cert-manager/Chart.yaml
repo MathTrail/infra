@@ -1,5 +1,0 @@
-apiVersion: v2
-name: cert-manager-apps
-description: ArgoCD Applications for cert-manager and its ClusterIssuers
-type: application
-version: 0.1.0

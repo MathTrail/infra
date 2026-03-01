@@ -50,7 +50,7 @@ metadata:
 # cert-manager creates the 'webhook-server-cert' Secret (the name VCO expects)
 # before the VCO Helm chart is installed. The cainjector annotation is patched
 # onto the MutatingWebhookConfiguration / ValidatingWebhookConfiguration after
-# VCO is installed (see install-infra recipe in charts/justfile).
+# VCO is installed (see vco-cainjector-patch-job.yaml).
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

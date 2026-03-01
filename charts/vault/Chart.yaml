@@ -1,5 +1,0 @@
-apiVersion: v2
-name: vault-apps
-description: ArgoCD Applications for HashiCorp Vault, VCO, VSO, and vault configuration
-type: application
-version: 0.1.0

@@ -1,5 +1,0 @@
-apiVersion: v2
-name: chaos-mesh-apps
-description: ArgoCD Applications for Chaos Mesh and chaos experiments
-type: application
-version: 0.1.0

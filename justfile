@@ -34,7 +34,7 @@ delete:
 
     # Phase 1: Remove vault-config first (VCO is still running → finalizers clear naturally)
     echo "🗑️  Removing vault-config (VCO CRs)..."
-    helm uninstall vault-config-apps --namespace {{argocd_ns}} 2>/dev/null || true
+    helm uninstall vault-config --namespace {{argocd_ns}} 2>/dev/null || true
 
     # Wait for VCO CRs to be fully removed (VCO controller handles finalizers)
     printf "  ⏳ Waiting for VCO CRs to clear..."
@@ -65,10 +65,12 @@ delete:
         --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
     fi
 
-    # Phase 2: Remove remaining app-of-apps releases
+    # Phase 2: Remove remaining app releases
     echo "🗑️  Removing remaining Applications..."
-    for release in cert-manager-apps external-secrets-apps storageclass-apps chaos-mesh-apps vault-apps; do
-        helm uninstall "$release" --namespace {{argocd_ns}} 2>/dev/null || true
+    for dir in "{{justfile_directory()}}"/apps/*/; do
+      app="$(basename "$dir")"
+      [ "$app" = "vault-config" ] && continue
+      helm uninstall "$app" --namespace {{argocd_ns}} 2>/dev/null || true
     done
     sleep 5
 
@@ -153,11 +155,12 @@ _bootstrap-infra:
     echo "🌊 Step 2/2 — Infrastructure via ArgoCD (sync-waves 0 → 4)..."
 
     GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-    for chart in cert-manager vault vault-config external-secrets storageclass chaos-mesh; do
-        helm upgrade --install "${chart}-apps" "{{justfile_directory()}}/charts/${chart}" \
-          --namespace {{argocd_ns}} \
-          --set gitBranch="$GIT_BRANCH" \
-          --timeout 60s
+    for dir in "{{justfile_directory()}}"/apps/*/; do
+      app="$(basename "$dir")"
+      helm upgrade --install "$app" "$dir" \
+        --namespace {{argocd_ns}} \
+        --set gitBranch="$GIT_BRANCH" \
+        --timeout 60s
     done
     echo "  Applications applied. ArgoCD sync in progress..."
 

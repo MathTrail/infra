@@ -1,0 +1,24 @@
+{{- if .Values.deploy }}
+# Chaos experiments — scheduled fault injection (pod-kill, network-delay).
+# deploy: false by default, enable on staging.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chaos-experiments
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mathtrail
+  source:
+    repoURL: https://github.com/MathTrail/gitops
+    path: apps/chaos
+    targetRevision: {{ .Values.gitBranch }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mathtrail
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+{{- end }}

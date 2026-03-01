@@ -1,0 +1,31 @@
+{{- if .Values.deploy }}
+# cert-manager ClusterIssuers, root CA Certificate, and VCO webhook Certificate CR.
+# wave 2: cert-manager (wave 0) must be Healthy.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mathtrail
+  source:
+    repoURL: https://github.com/MathTrail/infra
+    targetRevision: {{ .Values.gitBranch }}
+    path: manifests
+    directory:
+      include: "cert-manager-issuers.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+{{- end }}

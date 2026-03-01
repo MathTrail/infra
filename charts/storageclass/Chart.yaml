@@ -1,5 +1,0 @@
-apiVersion: v2
-name: storageclass-apps
-description: ArgoCD Application for on-prem StorageClass
-type: application
-version: 0.1.0

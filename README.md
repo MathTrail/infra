@@ -12,10 +12,10 @@ Global cluster infrastructure — deploys Vault, External Secrets, and shared se
 
 ## Repository Structure
 ```
+apps/                   # one folder per ArgoCD Application (self-contained Helm charts)
 manifests/              # raw K8s YAML (namespaces, RBAC, Jobs, SecretStores)
-charts/                 # per-component ArgoCD Application-of-Apps Helm charts
-vault-config/           # Kustomize overlay with VCO Custom Resources
 justfile                # deploy / delete recipes
+platform.env            # platform-wide constants
 ```
 
 ## Prerequisites
