@@ -91,7 +91,9 @@ spec:
 
                 vault policy write vco-admin - <<'POLICY'
               # VCO admin — manages auth roles, policies, secret engines, KV seeds
+              path "sys/auth"       { capabilities = ["read","list","sudo"] }
               path "sys/auth/*"     { capabilities = ["create","read","update","delete","list","sudo"] }
+              path "sys/mounts"     { capabilities = ["read","list"] }
               path "sys/mounts/*"   { capabilities = ["create","read","update","delete","list"] }
               path "sys/policies/*" { capabilities = ["create","read","update","delete","list"] }
               path "sys/policy/*"   { capabilities = ["create","read","update","delete","list"] }

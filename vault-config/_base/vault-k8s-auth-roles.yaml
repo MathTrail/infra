@@ -16,7 +16,7 @@ spec:
     role: vco-admin
     serviceAccount:
       name: controller-manager
-  path: auth/kubernetes
+  path: kubernetes
   policies:
     - eso-policy
   targetServiceAccounts:
@@ -46,7 +46,7 @@ spec:
     role: vco-admin
     serviceAccount:
       name: controller-manager
-  path: auth/kubernetes
+  path: kubernetes
   policies:
     - vso-db-policy
   targetServiceAccounts:
@@ -77,7 +77,7 @@ spec:
     role: vco-admin
     serviceAccount:
       name: controller-manager
-  path: auth/kubernetes
+  path: kubernetes
   policies:
     - app-read-policy
   targetServiceAccounts:
