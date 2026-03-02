@@ -226,3 +226,32 @@ _bootstrap-infra:
 
     echo ""
     echo "  All waves completed."
+
+    # Final scan: catch any Application that was not wave-ordered (e.g. storageclass,
+    # chaos-mesh) but is in an error state — ComparisonError, SyncError, or Degraded.
+    echo ""
+    echo "  🔍 Final check: all Applications..."
+    FAILED=0
+    for app in $(kubectl -n {{argocd_ns}} get applications \
+        -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+      health=$(kubectl -n {{argocd_ns}} get application "$app" \
+        -o jsonpath='{.status.health.status}' 2>/dev/null || echo "")
+      cond_type=$(kubectl -n {{argocd_ns}} get application "$app" \
+        -o jsonpath='{.status.conditions[0].type}' 2>/dev/null || echo "")
+      if [ "$health" = "Degraded" ] || [ -n "$cond_type" ]; then
+        cond_msg=$(kubectl -n {{argocd_ns}} get application "$app" \
+          -o jsonpath='{.status.conditions[0].message}' 2>/dev/null \
+          | cut -c1-120 || echo "")
+        sync=$(kubectl -n {{argocd_ns}} get application "$app" \
+          -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
+        echo "    ❌ $app: health=$health sync=$sync cond=$cond_type"
+        [ -n "$cond_msg" ] && echo "       $cond_msg"
+        FAILED=$((FAILED + 1))
+      fi
+    done
+    if [ $FAILED -gt 0 ]; then
+      echo ""
+      echo "  ⚠️  $FAILED Application(s) have issues. Run 'just status' for details."
+      exit 1
+    fi
+    echo "    ✅ All Applications clean."
