@@ -3,27 +3,29 @@ You are an infrastructure expert working on mathtrail-infra — the umbrella rep
 This repo deploys cluster-level components that all services depend on.
 This is NOT a service — it manages shared infrastructure.
 
-Tech Stack: Helm, Skaffold, Just, Vault Config Operator (VCO), Vault Secrets Operator (VSO)
+Tech Stack: Helm, ArgoCD, Just, Vault Config Operator (VCO), Vault Secrets Operator (VSO)
 Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.github.io/charts/charts)
 
 # Repo Layout
-- `skaffold.yaml` — orchestrates deploy: Helm releases + raw manifests (multi-config, phased)
-- `skaffold.env` — platform constants shared across all MathTrail repos (namespace, registry, chart repo URL, cluster name)
+- `platform.env` — platform constants shared across all MathTrail repos (namespace, registry, chart repo URL, cluster name)
 - `justfile` — developer-facing recipes (`just deploy`, `just delete`)
-- `values/` — Helm values for: vault, external-secrets, telepresence
-- `manifests/` — raw K8s YAML:
-  - `vault-namespace.yaml` — creates the `vault` namespace
-  - `namespace.yaml` — creates the `mathtrail` application namespace
-  - `vault-unseal-key-secret.yaml` — empty unseal-key Secret placeholder for Vault startup
-  - `vault-rbac.yaml` — ServiceAccount, Roles, ClusterRoleBinding for Vault
-  - `vault-init-rbac.yaml` — RBAC for the vault-init Job
-  - `vault-init-job.yaml` — idempotent Job that initializes + unseals Vault
-  - `cluster-secret-store.yaml` — ESO ClusterSecretStore for Database Secrets Engine
-  - `cluster-secret-store-kv.yaml` — ESO ClusterSecretStore for KV v2
-- `vault-config/` — Kustomize overlay with VCO Custom Resources:
-  - `_base/` — VaultConnection, VaultAuth, policies, engine mounts, K8s auth roles, KV seeds
-  - `mentor-api/` — per-service DB engine config + role for Mentor
-  - `profile-api/` — per-service DB engine config + role for Profile
+- `bootstrap/` — raw K8s YAML applied by `kubectl apply` before ArgoCD starts (true Layer 0):
+  - `argocd-project.yaml` — AppProject `mathtrail`
+  - `argocd-repo-creds.yaml` — private repo access Secret (conditional on GITHUB_TOKEN)
+- `apps/` — one self-contained folder per ArgoCD Application (each is a minimal Helm chart):
+  - `cert-manager/` — cert-manager controller (wave 0, multi-source with helm-values.yaml)
+  - `cert-manager-config/` — ClusterIssuers + CA + VCO webhook cert (wave 2, manifests/ subdir)
+  - `vault/` — Vault server HA Raft (wave 1, multi-source with helm-values.yaml)
+  - `vault-init/` — RBAC + init Job + unseal-key placeholder (wave 2, manifests/ subdir)
+  - `vault-config-operator/` — VCO operator (wave 3, multi-source with helm-values.yaml + manifests/ subdir)
+  - `vault-config/` — VCO CRs: policies + K8s auth roles (wave 4, resources/ subdir)
+  - `vault-secrets-operator/` — VSO operator (wave 4, multi-source with helm-values.yaml)
+  - `external-secrets/` — ESO operator (wave 1, single-source chart)
+  - `external-secrets-config/` — ClusterSecretStores for Vault backends (wave 4, manifests/ subdir)
+  - `storageclass/` — on-prem StorageClass from gitops repo
+  - `chaos-mesh/` — Chaos Mesh (deploy: false by default)
+  - `chaos-experiments/` — chaos experiments from gitops repo (deploy: false by default)
+  Each folder contains: Chart.yaml, values.yaml, templates/application.yaml, optional helm-values.yaml, optional manifests/ or resources/
 
 # What Is Currently Deployed
 - **vault-prereqs**: `vault` namespace + `mathtrail` namespace + unseal-key Secret placeholder
@@ -31,7 +33,7 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 - **vault-init**: RBAC + idempotent init Job (initializes cluster, unseals with Shamir keys)
 - **Vault Config Operator (VCO)** (Helm release into `vault-config-operator` namespace)
   - Reconciles VaultConnection, VaultAuth, Policy, SecretEngineMount, DatabaseSecretEngineRole, etc.
-- **VCO Custom Resources** (Kustomize — `vault-config/`):
+- **VCO Custom Resources** (`apps/vault-config/resources/`):
   - Kubernetes auth method (ESO role + app-reader role + db-admin role)
   - Database Secrets Engine mount + per-service configs/roles
   - KV v2 Secrets Engine + seed secrets
@@ -42,27 +44,30 @@ Infra: All Helm charts are vendored in mathtrail-charts repo (https://MathTrail.
 - **Two ClusterSecretStores** (`vault-backend` for database, `vault-kv-backend` for KV v2)
 - **Telepresence** traffic-manager (Helm release into `ambassador` namespace)
 
-# Skaffold Deploy Chain
+# Deploy Chain
+
+## justfile (Helm — ArgoCD Application CRs)
 ```
-mathtrail-infra (top-level)
-  requires:
-    Phase 1 (parallel): vault-prereqs, external-secrets, telepresence
-    Phase 2: vault (HashiCorp Vault Helm chart, needs namespace + unseal-key)
-    Phase 3: vault-init (init Job — initializes + unseals)
-    Phase 4: vault-config-operator (VCO — needs Vault initialized)
-    Phase 5 (parallel): vault-config (VCO CRs), vault-secrets-operator (VSO)
-    Phase 6: vault-secret-stores (ESO ClusterSecretStores — needs KV engine configured)
+just deploy
+  Step 1: _install-argocd  — install ArgoCD + AppProject
+  Step 2: _bootstrap-infra — install all apps/* as Helm releases (each wraps one ArgoCD Application):
+          then wait for ArgoCD to sync all Applications by wave:
+            Wave 0: cert-manager
+            Wave 1: vault, external-secrets
+            Wave 2: cert-manager-config, vault-init
+            Wave 3: vault-config-operator
+            Wave 4: vault-config, vault-secrets-operator, external-secrets-config
 ```
 
 # Vault Architecture
-- **HashiCorp Vault** in HA Raft mode (3 replicas prod, 1 replica dev via Skaffold profile)
+- **HashiCorp Vault** in HA Raft mode (3 replicas prod, 1 replica dev)
 - **Shamir unseal**: vault-init Job initializes Vault, unseals with Shamir keys, stores keys in `vault-unseal-key` Secret
 - **VCO** (Vault Config Operator) manages all Vault configuration declaratively via CRs
 - **VSO** (Vault Secrets Operator) syncs Vault secrets into K8s Secrets for pods
   - Pods consume credentials via `secretKeyRef` env vars
   - VSO triggers rolling restarts on lease renewal — no in-process refresh needed
-- **Per-service DB configs** are declared as VCO CRs in `vault-config/{service}/`
-- Adding a new service: add a new Kustomize overlay in `vault-config/` — no Helm changes
+- **Per-service DB configs** are declared as VCO CRs in `apps/vault-config/resources/{service}/`
+- Adding a new service: add a new resource file in `apps/vault-config/resources/` — no Helm changes
 
 # Secret Management Architecture (Platform Standard)
 
@@ -93,7 +98,7 @@ No application secrets — manages the secret infrastructure itself.
 - Namespace isolation: each component gets its own namespace (e.g. vault, external-secrets, vault-config-operator)
 - Changes to global infrastructure must be tested in local k3d before applying to on-prem/cloud
 - Document all manual steps in justfile recipes
-- `skaffold.env` is the source of truth for platform-wide constants; other repos copy it
+- `platform.env` is the source of truth for platform-wide constants; other repos copy it
 - Vault configuration is declarative via VCO CRs — never use imperative `vault write` commands
 
 # Commit Convention
@@ -101,7 +106,6 @@ Use Conventional Commits: feat(infra):, fix(infra):, chore(infra):
 Example: feat(infra): add profile-api vault db role via VCO
 
 # Testing Strategy
-Validate: `skaffold diagnose`
 Integration: Deploy to local k3d cluster (`just deploy`), verify all components running
 `kubectl get pods --all-namespaces` to verify
 `kubectl get pods -n vault` to verify Vault pods

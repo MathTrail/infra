@@ -1,0 +1,213 @@
+# Idempotent Vault initialization Job.
+#
+# Runs once after the Vault StatefulSet is healthy. Initializes Vault with
+# Shamir unseal keys (OSS — no auto-unseal). After init the Job unseals
+# ALL replicas (vault-0 through vault-N) using the generated keys.
+#
+# Saves root-token + unseal-key-{1..5} to the vault-init-credentials Secret
+# in the vault namespace. VCO reads root-token from there.
+#
+# Idempotency: if vault-init-credentials already exists and Vault is already
+# initialized, the Job attempts to unseal (if sealed) and exits 0.
+#
+# Secret seeding is intentionally absent: ESO PushSecrets (in infra-local)
+# push postgres/redis credentials from K8s Secrets to Vault KV after infra-local
+# is deployed. This Job only handles Vault bootstrap, not secret population.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-init
+  namespace: vault
+spec:
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      serviceAccountName: vault-init
+      restartPolicy: OnFailure
+      containers:
+        - name: vault-init
+          image: hashicorp/vault:1.19.0
+          env:
+            - name: VAULT_ADDR
+              value: "http://vault-0.vault-internal.vault.svc.cluster.local:8200"
+            - name: VAULT_SKIP_VERIFY
+              value: "true"
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              apk add --no-cache kubectl jq 2>/dev/null || true
+
+              unseal_node() {
+                local addr=$1
+                echo "=== Unsealing $addr ==="
+                for i in 1 2 3; do
+                  KEY=$(kubectl get secret vault-init-credentials -n vault \
+                    -o jsonpath="{.data.unseal-key-${i}}" | base64 -d)
+                  VAULT_ADDR="$addr" vault operator unseal "$KEY" || true
+                done
+              }
+
+              unseal_vault() {
+                unseal_node "http://vault-0.vault-internal.vault.svc.cluster.local:8200"
+              }
+
+              # Unseal all HA replicas that are sealed
+              unseal_all_replicas() {
+                echo "=== Unsealing remaining HA replicas ==="
+                REPLICAS=$(kubectl get statefulset vault -n vault \
+                  -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "1")
+                for idx in $(seq 1 $((REPLICAS - 1))); do
+                  ADDR="http://vault-${idx}.vault-internal.vault.svc.cluster.local:8200"
+                  echo "--- Waiting for vault-${idx} to be reachable..."
+                  for attempt in $(seq 1 30); do
+                    if VAULT_ADDR="$ADDR" vault status -format=json 2>/dev/null | grep -q '"initialized"'; then
+                      break
+                    fi
+                    sleep 5
+                  done
+                  SEALED=$(VAULT_ADDR="$ADDR" vault status -format=json 2>/dev/null \
+                    | jq -r '.sealed' || echo "true")
+                  if [ "$SEALED" = "true" ]; then
+                    unseal_node "$ADDR"
+                  else
+                    echo "vault-${idx} already unsealed."
+                  fi
+                done
+              }
+
+              # Enable KV v2 and Database secret engines.
+              # Must run before VCO starts managing policies/roles against these mounts.
+              # Idempotent: 'already enabled' errors are suppressed.
+              bootstrap_engines() {
+                echo "=== Enabling secret engines ==="
+                if [ -z "${ROOT_TOKEN:-}" ]; then
+                  ROOT_TOKEN=$(kubectl get secret vault-init-credentials -n vault \
+                    -o jsonpath='{.data.root-token}' | base64 -d)
+                fi
+                export VAULT_TOKEN="$ROOT_TOKEN"
+
+                vault secrets enable -path=secret -version=2 kv 2>/dev/null \
+                  || echo "KV v2 engine already enabled"
+                vault secrets enable -path=database database 2>/dev/null \
+                  || echo "database engine already enabled"
+
+                echo "=== Secret engines ready ==="
+              }
+
+              # Bootstrap Kubernetes auth so VCO can authenticate via SA token.
+              # Solves chicken-and-egg: VCO v0.8+ only supports K8s auth (no token method).
+              bootstrap_kubernetes_auth() {
+                echo "=== Bootstrapping Kubernetes auth for VCO ==="
+                if [ -z "${ROOT_TOKEN:-}" ]; then
+                  ROOT_TOKEN=$(kubectl get secret vault-init-credentials -n vault \
+                    -o jsonpath='{.data.root-token}' | base64 -d)
+                fi
+                export VAULT_TOKEN="$ROOT_TOKEN"
+
+                vault auth enable kubernetes 2>/dev/null \
+                  || echo "kubernetes auth already enabled"
+
+                vault write auth/kubernetes/config \
+                  kubernetes_host="https://kubernetes.default.svc:443"
+
+                vault policy write vco-admin - <<'POLICY'
+              # VCO admin — manages auth roles, policies, secret engines, KV seeds
+              path "sys/auth"       { capabilities = ["read","list","sudo"] }
+              path "sys/auth/*"     { capabilities = ["create","read","update","delete","list","sudo"] }
+              path "sys/mounts"     { capabilities = ["read","list"] }
+              path "sys/mounts/*"   { capabilities = ["create","read","update","delete","list"] }
+              path "sys/policies/*" { capabilities = ["create","read","update","delete","list"] }
+              path "sys/policy/*"   { capabilities = ["create","read","update","delete","list"] }
+              path "auth/*"         { capabilities = ["create","read","update","delete","list","sudo"] }
+              path "database/*"     { capabilities = ["create","read","update","delete","list"] }
+              path "secret/*"       { capabilities = ["create","read","update","delete","list"] }
+              POLICY
+
+                vault write auth/kubernetes/role/vco-admin \
+                  bound_service_account_names=controller-manager \
+                  bound_service_account_namespaces=vault-config-operator \
+                  policies=vco-admin \
+                  ttl=1h
+
+                echo "=== Kubernetes auth bootstrap complete ==="
+              }
+
+              echo "=== Waiting for vault-0 to be reachable ==="
+              until vault status -format=json 2>/dev/null | grep -q '"initialized"'; do
+                echo "vault-0 not ready yet, retrying in 5s..."
+                sleep 5
+              done
+
+              echo "=== Checking if already initialized ==="
+              STATUS=$(vault status -format=json 2>/dev/null || true)
+              INITIALIZED=$(echo "$STATUS" | jq -r '.initialized')
+              if [ "$INITIALIZED" = "true" ]; then
+                echo "Vault already initialized."
+                SEALED=$(echo "$STATUS" | jq -r '.sealed')
+                if [ "$SEALED" = "true" ]; then
+                  echo "Vault is sealed — attempting unseal..."
+                  unseal_vault
+                fi
+                echo "Vault is initialized and unsealed."
+                unseal_all_replicas
+                bootstrap_engines
+                bootstrap_kubernetes_auth
+                echo "=== vault-init complete (existing cluster) ==="
+                exit 0
+              fi
+
+              echo "=== Initializing Vault (Shamir unseal) ==="
+              INIT_OUTPUT=$(vault operator init \
+                -key-shares=5 \
+                -key-threshold=3 \
+                -format=json)
+
+              ROOT_TOKEN=$(echo "$INIT_OUTPUT" | jq -r '.root_token')
+              KEY1=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[0]')
+              KEY2=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[1]')
+              KEY3=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[2]')
+              KEY4=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[3]')
+              KEY5=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[4]')
+
+              echo "=== Unsealing vault-0 with Shamir keys ==="
+              vault operator unseal "$KEY1"
+              vault operator unseal "$KEY2"
+              vault operator unseal "$KEY3"
+
+              echo "=== Verifying unseal ==="
+              SEALED=$(vault status -format=json 2>/dev/null || true)
+              SEALED=$(echo "$SEALED" | jq -r '.sealed')
+              if [ "$SEALED" = "true" ]; then
+                echo "ERROR: Vault is still sealed after providing 3 keys."
+                exit 1
+              fi
+              echo "Vault is unsealed."
+
+              echo "=== Saving credentials to vault-init-credentials Secret ==="
+              kubectl create secret generic vault-init-credentials \
+                --namespace vault \
+                --from-literal=root-token="$ROOT_TOKEN" \
+                --from-literal=unseal-key-1="$KEY1" \
+                --from-literal=unseal-key-2="$KEY2" \
+                --from-literal=unseal-key-3="$KEY3" \
+                --from-literal=unseal-key-4="$KEY4" \
+                --from-literal=unseal-key-5="$KEY5" \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+              echo "=== Vault initialization complete ==="
+              echo "Root token and unseal keys stored in vault-init-credentials Secret."
+              echo "IMPORTANT: Copy unseal keys to offline storage (safe/PGP)."
+
+              unseal_all_replicas
+              bootstrap_engines
+              bootstrap_kubernetes_auth
+              echo "=== vault-init complete (fresh cluster) ==="
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

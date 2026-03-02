@@ -1,0 +1,56 @@
+{{- if .Values.deploy }}
+# Chaos Mesh — fault injection platform for Kubernetes.
+# deploy: false by default, enable on staging.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chaos-mesh
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mathtrail
+  source:
+    repoURL: https://MathTrail.github.io/charts/charts
+    chart: chaos-mesh
+    targetRevision: ">=0.0.0"
+    helm:
+      parameters:
+        - name: chaosDaemon.runtime
+          value: containerd
+        - name: chaosDaemon.socketPath
+          value: /run/k3s/containerd/containerd.sock
+        - name: controllerManager.targetNamespace
+          value: mathtrail
+        - name: dashboard.create
+          value: "true"
+        - name: dashboard.securityMode
+          value: "true"
+        - name: dnsServer.create
+          value: "false"
+        - name: chaosDaemon.resources.requests.cpu
+          value: "50m"
+        - name: chaosDaemon.resources.requests.memory
+          value: "64Mi"
+        - name: chaosDaemon.resources.limits.cpu
+          value: "200m"
+        - name: chaosDaemon.resources.limits.memory
+          value: "256Mi"
+        - name: controllerManager.resources.requests.cpu
+          value: "50m"
+        - name: controllerManager.resources.requests.memory
+          value: "64Mi"
+        - name: controllerManager.resources.limits.cpu
+          value: "200m"
+        - name: controllerManager.resources.limits.memory
+          value: "256Mi"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chaos-mesh
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}

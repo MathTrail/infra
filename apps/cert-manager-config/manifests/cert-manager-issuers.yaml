@@ -1,0 +1,68 @@
+# Bootstrap self-signed issuer — used only to sign the root CA Certificate below.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+
+---
+# Root CA Certificate stored in the cert-manager namespace.
+# 10-year validity; renewed 30 days before expiry.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mathtrail-internal-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: mathtrail-internal-ca
+  secretName: mathtrail-internal-ca-secret
+  duration: 87600h    # 10 years
+  renewBefore: 720h   # 30 days
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+
+---
+# Cluster-wide internal CA issuer backed by the root CA above.
+# Used for all internal service TLS certs (webhooks, etc.).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: mathtrail-internal-ca-issuer
+spec:
+  ca:
+    secretName: mathtrail-internal-ca-secret
+
+---
+# VCO namespace must exist before the Certificate CR can be created here.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault-config-operator
+
+---
+# TLS certificate for the VCO admission webhook server.
+# cert-manager creates the 'webhook-server-cert' Secret (the name VCO expects)
+# before the VCO Helm chart is installed. The cainjector annotation is patched
+# onto the MutatingWebhookConfiguration / ValidatingWebhookConfiguration after
+# VCO is installed (see vco-cainjector-patch-job.yaml).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vco-webhook-cert
+  namespace: vault-config-operator
+spec:
+  secretName: webhook-server-cert
+  duration: 8760h     # 1 year
+  renewBefore: 720h   # 30 days before expiry
+  dnsNames:
+    - vault-config-operator-webhook-service.vault-config-operator.svc
+    - vault-config-operator-webhook-service.vault-config-operator.svc.cluster.local
+  issuerRef:
+    name: mathtrail-internal-ca-issuer
+    kind: ClusterIssuer

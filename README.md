@@ -6,16 +6,16 @@ Global cluster infrastructure — deploys Vault, External Secrets, and shared se
 - **External Secrets Operator** — sync Vault secrets to Kubernetes
 
 ## Tech Stack
-- **Orchestration**: Helm, Skaffold
+- **Orchestration**: Helm, ArgoCD
 - **Secrets**: Vault, External Secrets
 - **Task Runner**: Just
 
 ## Repository Structure
 ```
-manifests/
-  vault-instance.yaml   # Vault CR with policies, auth roles, secrets engines
-skaffold.yaml           # Skaffold config (module: mathtrail-infra)
+apps/                   # one folder per ArgoCD Application (self-contained Helm charts)
+manifests/              # raw K8s YAML (namespaces, RBAC, Jobs, SecretStores)
 justfile                # deploy / delete recipes
+platform.env            # platform-wide constants
 ```
 
 ## Prerequisites

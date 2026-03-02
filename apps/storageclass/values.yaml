@@ -1,0 +1,3 @@
+gitBranch: main
+# off by default — on-prem only. Enable with: --set deploy=true
+deploy: false
