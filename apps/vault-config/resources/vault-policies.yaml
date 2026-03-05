@@ -53,7 +53,6 @@ spec:
     }
 
 ---
----
 # ESO write policy — allows ESO PushSecret to write generated credentials to Vault KV.
 # Used by infra-local PushSecrets that push postgres/redis passwords from K8s Secrets
 # (created by Bitnami charts) into Vault so services can read them without hardcoding.
@@ -75,8 +74,8 @@ spec:
     serviceAccount:
       name: controller-manager
   policy: |
-    path "secret/data/local/*"     { capabilities = ["create", "update"] }
-    path "secret/metadata/local/*" { capabilities = ["create", "update", "delete"] }
+    path "secret/data/local/*"     { capabilities = ["read", "create", "update"] }
+    path "secret/metadata/local/*" { capabilities = ["read", "create", "update", "delete"] }
 
 ---
 # App-read policy — transitional bridge for direct Vault HTTP calls.
