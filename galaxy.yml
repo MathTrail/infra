@@ -1,0 +1,6 @@
+---
+namespace: mathtrail
+name: infra
+version: 0.1.0
+readme: README.md
+description: MathTrail base infrastructure Ansible collection
