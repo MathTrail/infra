@@ -1,0 +1,14 @@
+---
+- name: Check if helm is installed
+  ansible.builtin.command: helm version --short
+  register: _helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Install helm via official script
+  ansible.builtin.shell:
+    cmd: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  become: true
+  environment:
+    DESIRED_VERSION: "{{ '' if helm_version == 'latest' else helm_version }}"
+  when: _helm_check.rc != 0
