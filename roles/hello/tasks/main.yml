@@ -1,0 +1,4 @@
+---
+- name: Hello from infra
+  ansible.builtin.debug:
+    msg: "Hello World from infra!"

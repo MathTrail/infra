@@ -1,0 +1,29 @@
+---
+- name: Install Docker (only if not present)
+  ansible.builtin.package:
+    name: docker.io
+    state: present
+
+- name: Create Docker data directory on secondary disk
+  ansible.builtin.file:
+    path: "{{ docker_data_dir }}"
+    state: directory
+    owner: root
+    mode: '0711'
+
+- name: Configure Docker daemon data-root
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "data-root": "{{ docker_data_dir }}"
+      }
+    owner: root
+    mode: '0644'
+  notify: Restart Docker
+
+- name: Enable Docker service
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
