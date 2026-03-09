@@ -1,4 +1,34 @@
 ---
+- name: Check argocd namespace state
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ argocd_namespace }}"
+  register: _ns_info
+
+- name: Force-finalize terminating argocd namespace
+  ansible.builtin.shell: |
+    kubectl get namespace {{ argocd_namespace }} -o json \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); d['spec']['finalizers']=[]; print(json.dumps(d))" \
+      | kubectl replace --raw /api/v1/namespaces/{{ argocd_namespace }}/finalize -f -
+  changed_when: true
+  when:
+    - _ns_info.resources | length > 0
+    - _ns_info.resources[0].status.phase == 'Terminating'
+
+- name: Wait for argocd namespace to be gone after force-finalize
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ argocd_namespace }}"
+  register: _ns_wait
+  until: _ns_wait.resources | length == 0
+  retries: 30
+  delay: 2
+  when:
+    - _ns_info.resources | length > 0
+    - _ns_info.resources[0].status.phase == 'Terminating'
+
 - name: Create argocd namespace
   kubernetes.core.k8s:
     api_version: v1
