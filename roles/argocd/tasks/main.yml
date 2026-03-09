@@ -1,4 +1,24 @@
 ---
+- name: Create argocd namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ argocd_namespace }}"
+    state: present
+
+- name: Pre-create argocd-redis Secret (skips quay.io pull for secret-init Job)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: argocd-redis
+        namespace: "{{ argocd_namespace }}"
+      type: Opaque
+      data:
+        auth: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') | b64encode }}"
+    state: present
+
 - name: Install ArgoCD via Helm
   kubernetes.core.helm:
     name: argocd
@@ -11,6 +31,8 @@
     values:
       server:
         insecure: true
+      redisSecretInit:
+        enabled: false
 
 - name: Apply AppProject mathtrail
   kubernetes.core.k8s:
