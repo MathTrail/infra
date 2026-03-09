@@ -51,4 +51,4 @@
   ansible.builtin.include_tasks: wait-for-app.yml
   vars:
     app_name: external-secrets-config
-    app_timeout: 240
+    app_timeout: 360
