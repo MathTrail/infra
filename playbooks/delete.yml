@@ -1,0 +1,131 @@
+---
+- name: Remove MathTrail Infrastructure Applications
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    argocd_namespace: argocd
+    terminating_namespaces:
+      - vault-config-operator
+      - vault
+      - vault-secrets-operator
+      - cert-manager
+      - external-secrets
+      - chaos-mesh
+
+  pre_tasks:
+    - name: Install kubernetes Python library
+      ansible.builtin.command:
+        cmd: "{{ ansible_playbook_python }} -m pip install kubernetes"
+      register: _pip
+      changed_when: "'Successfully installed' in _pip.stdout"
+
+  tasks:
+    # Phase 1: Remove vault-config first (VCO is still running → finalizers clear naturally)
+    - name: Uninstall vault-config Helm release
+      kubernetes.core.helm:
+        name: vault-config
+        release_namespace: "{{ argocd_namespace }}"
+        state: absent
+      ignore_errors: true
+
+    - name: Wait for vault-config Application to disappear (up to 60s)
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        name: vault-config
+        namespace: "{{ argocd_namespace }}"
+      register: _vcc
+      until: _vcc.resources | length == 0
+      retries: 12
+      delay: 5
+      ignore_errors: true
+
+    - name: Strip VCO CR finalizers if Application is still stuck
+      when: _vcc.resources | length > 0
+      block:
+        - name: Get VCO CRD names
+          ansible.builtin.command: kubectl api-resources --api-group=redhatcop.redhat.io -o name
+          register: _vco_crds
+          changed_when: false
+          ignore_errors: true
+
+        - name: Get VCO CR instances
+          ansible.builtin.command: >-
+            kubectl get {{ item }} -n vault-config-operator
+            --no-headers -o custom-columns=':metadata.name'
+          register: _vco_crs
+          loop: "{{ _vco_crds.stdout_lines | default([]) }}"
+          changed_when: false
+          ignore_errors: true
+
+        - name: Patch VCO CRs to remove finalizers
+          ansible.builtin.command: >-
+            kubectl -n vault-config-operator patch {{ item.item }} {{ cr_name }}
+            --type=merge -p '{"metadata":{"finalizers":null}}'
+          loop: "{{ _vco_crs.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item }}"
+          vars:
+            cr_name: "{{ item.stdout_lines | default([]) | join(' ') }}"
+          when: item.stdout_lines | default([]) | length > 0
+          ignore_errors: true
+
+        - name: Strip Application vault-config finalizer
+          kubernetes.core.k8s:
+            api_version: argoproj.io/v1alpha1
+            kind: Application
+            name: vault-config
+            namespace: "{{ argocd_namespace }}"
+            merge_type: merge
+            definition:
+              metadata:
+                finalizers: []
+          ignore_errors: true
+
+    # Phase 2: Remove remaining Application Helm releases
+    - name: Find all app directories
+      ansible.builtin.find:
+        paths: "{{ playbook_dir }}/../apps"
+        file_type: directory
+        depth: 1
+      register: _app_dirs
+
+    - name: Uninstall remaining Application Helm releases
+      kubernetes.core.helm:
+        name: "{{ item.path | basename }}"
+        release_namespace: "{{ argocd_namespace }}"
+        state: absent
+      loop: "{{ _app_dirs.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when: item.path | basename != 'vault-config'
+      ignore_errors: true
+
+    # Phase 3: Wait for terminating namespaces
+    - name: Check namespace status
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: "{{ item }}"
+      register: _ns_info
+      loop: "{{ terminating_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Wait for Terminating namespaces to be deleted
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: "{{ item.item }}"
+      register: _ns_wait
+      until: _ns_wait.resources | length == 0
+      retries: 6
+      delay: 5
+      loop: "{{ _ns_info.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: >-
+        item.resources | length > 0 and
+        item.resources[0].status.phase | default('') == 'Terminating'
+      ignore_errors: true

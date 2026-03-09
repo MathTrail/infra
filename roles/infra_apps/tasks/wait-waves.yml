@@ -1,0 +1,54 @@
+---
+- name: "Wave 0: cert-manager"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: cert-manager
+    app_timeout: 300
+
+- name: "Wave 1: vault"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: vault
+    app_timeout: 360
+
+- name: "Wave 1: external-secrets"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: external-secrets
+    app_timeout: 240
+
+- name: "Wave 2: cert-manager-config"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: cert-manager-config
+    app_timeout: 240
+
+- name: "Wave 2: vault-init"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: vault-init
+    app_timeout: 360
+
+- name: "Wave 3: vault-config-operator"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: vault-config-operator
+    app_timeout: 360
+
+- name: "Wave 4: vault-config"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: vault-config
+    app_timeout: 360
+
+- name: "Wave 4: vault-secrets-operator"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: vault-secrets-operator
+    app_timeout: 360
+
+- name: "Wave 4: external-secrets-config"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: external-secrets-config
+    app_timeout: 240

@@ -1,0 +1,24 @@
+---
+- name: Install ArgoCD via Helm
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: "{{ argocd_chart_ref }}"
+    chart_repo_url: "{{ charts_repo }}"
+    release_namespace: "{{ argocd_namespace }}"
+    create_namespace: true
+    wait: true
+    timeout: "{{ argocd_timeout }}"
+    values:
+      server:
+        insecure: true
+
+- name: Apply AppProject mathtrail
+  kubernetes.core.k8s:
+    src: "{{ role_path }}/../../bootstrap/argocd-project.yaml"
+    state: present
+
+- name: Configure private repository access
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'argocd-repo-creds.yaml.j2') | from_yaml }}"
+    state: present
+  when: github_token != ''

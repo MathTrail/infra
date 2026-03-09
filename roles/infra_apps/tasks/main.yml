@@ -1,0 +1,30 @@
+---
+- name: Get current git branch
+  ansible.builtin.command: git rev-parse --abbrev-ref HEAD
+  args:
+    chdir: "{{ playbook_dir }}/.."
+  register: _git_branch
+  changed_when: false
+
+- name: Find all app directories
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../apps"
+    file_type: directory
+    depth: 1
+  register: _app_dirs
+
+- name: Install Application Helm releases
+  kubernetes.core.helm:
+    name: "{{ item.path | basename }}"
+    chart_ref: "{{ item.path }}"
+    release_namespace: "{{ argocd_namespace }}"
+    wait: false
+    timeout: 60s
+    values:
+      gitBranch: "{{ _git_branch.stdout }}"
+  loop: "{{ _app_dirs.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Wait for all waves to complete
+  ansible.builtin.include_tasks: wait-waves.yml
