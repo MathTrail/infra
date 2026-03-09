@@ -95,30 +95,41 @@
       when: item.path | basename != 'vault-config'
       ignore_errors: true
 
-    # Phase 3: Wait for terminating namespaces
-    - name: Check namespace status
+    # Phase 3: Delete workload namespaces and force-finalize if stuck
+    - name: Delete workload namespaces
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ terminating_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+      ignore_errors: true
+
+    - name: Wait for namespaces to be gone (up to 60s)
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Namespace
         name: "{{ item }}"
-      register: _ns_info
+      register: _ns_wait
+      until: _ns_wait.resources | length == 0
+      retries: 12
+      delay: 5
       loop: "{{ terminating_namespaces }}"
       loop_control:
         label: "{{ item }}"
-
-    - name: Wait for Terminating namespaces to be deleted
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Namespace
-        name: "{{ item.item }}"
-      register: _ns_wait
-      until: _ns_wait.resources | length == 0
-      retries: 6
-      delay: 5
-      loop: "{{ _ns_info.results }}"
-      loop_control:
-        label: "{{ item.item }}"
-      when: >-
-        item.resources | length > 0 and
-        item.resources[0].status.phase | default('') == 'Terminating'
       ignore_errors: true
+
+    - name: Force-finalize any namespaces still stuck in Terminating
+      ansible.builtin.shell: |
+        kubectl get namespace {{ item }} -o json \
+          | python3 -c "import sys,json; d=json.load(sys.stdin); d['spec']['finalizers']=[]; print(json.dumps(d))" \
+          | kubectl replace --raw /api/v1/namespaces/{{ item }}/finalize -f -
+      loop: "{{ terminating_namespaces }}"
+      loop_control:
+        label: "{{ item }}"
+      register: _force_fin
+      failed_when: false
+      changed_when: _force_fin.rc == 0
+      when: (_ns_wait.results | selectattr('item', 'equalto', item) | map(attribute='resources') | first | default([])) | length > 0
