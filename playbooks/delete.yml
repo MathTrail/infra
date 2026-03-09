@@ -13,13 +13,6 @@
       - external-secrets
       - chaos-mesh
 
-  pre_tasks:
-    - name: Install kubernetes Python library
-      ansible.builtin.command:
-        cmd: "{{ ansible_playbook_python }} -m pip install kubernetes"
-      register: _pip
-      changed_when: "'Successfully installed' in _pip.stdout"
-
   tasks:
     # Phase 1: Remove vault-config first (VCO is still running → finalizers clear naturally)
     - name: Uninstall vault-config Helm release
