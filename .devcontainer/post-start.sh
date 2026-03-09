@@ -13,6 +13,8 @@ KUBECONFIG_SRC="/home/vscode/.kube-host/${CLUSTER_NAME}.yaml"
 
 if sudo test -f "$KUBECONFIG_SRC"; then
     sudo install -o vscode -g vscode -m 600 "$KUBECONFIG_SRC" /home/vscode/.kube/config
+    # k3d uses 0.0.0.0 on Linux host, but from inside a container the host is reached via host.docker.internal
+    sed -i 's|https://0.0.0.0:|https://host.docker.internal:|g' /home/vscode/.kube/config
     echo "Kubeconfig ready"
 else
     echo "Warning: kubeconfig not found at $KUBECONFIG_SRC"
