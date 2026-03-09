@@ -8,7 +8,7 @@
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2.14.0": {},
         "ghcr.io/devcontainers/features/kubectl-helm-minikube:1.2.2": {
-            "helm": "4.1.0",
+            "helm": "3.17.0", "// helm": "Helm 4.x not supported by kubernetes.core Ansible collection (issue#1038), upgrade when >=7.0.0 released",
             "version": "1.35.0",
             "minikube": "none"
         },
