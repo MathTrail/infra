@@ -15,7 +15,7 @@
         "ghcr.io/eitsupi/devcontainer-features/just:0.1.1": {}
     },
     "mounts": [
-        "source=${localEnv:USERPROFILE}/.kube,target=/home/vscode/.kube-host,type=bind,consistency=cached,readonly"
+        "source=${localEnv:HOME}/.kube,target=/home/vscode/.kube-host,type=bind,consistency=cached,readonly"
     ],
     "runArgs": [
         "--add-host=host.docker.internal:host-gateway",
