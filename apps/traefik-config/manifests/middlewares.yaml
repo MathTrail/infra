@@ -1,0 +1,74 @@
+# Rate limit for auth endpoints — brute-force protection (10 req/s, burst 20)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit-auth
+  namespace: kube-system
+spec:
+  rateLimit:
+    average: 10
+    burst: 20
+    period: 1s
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+
+---
+# Rate limit for API endpoints — relaxed limit (100 req/s, burst 200)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit-api
+  namespace: kube-system
+spec:
+  rateLimit:
+    average: 100
+    burst: 200
+    period: 1s
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+
+---
+# Circuit breaker: opens if >30% of responses are 5xx in the last 10s
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: circuit-breaker
+  namespace: kube-system
+spec:
+  circuitBreaker:
+    expression: ResponseCodeRatio(500, 600, 0, 600) > 0.30
+    checkPeriod: 10s
+    fallbackDuration: 30s
+    recoveryDuration: 10s
+
+---
+# Security headers
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: security-headers
+  namespace: kube-system
+spec:
+  headers:
+    stsSeconds: 31536000
+    stsIncludeSubdomains: true
+    frameDeny: true
+    contentTypeNosniff: true
+    browserXssFilter: true
+
+---
+# Connection timeouts to Oathkeeper (dialTimeout 5s, response 10s)
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: oathkeeper-transport
+  namespace: kube-system
+spec:
+  dialTimeout: 5s
+  responseHeaderTimeout: 10s
+  forwardingTimeouts:
+    dialTimeout: 5s
+    responseHeaderTimeout: 10s
+    idleConnTimeout: 90s

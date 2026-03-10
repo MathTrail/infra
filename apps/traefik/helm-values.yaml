@@ -1,0 +1,37 @@
+deployment:
+  replicas: 1    # override to 2 for prod HA
+
+# HTTP → HTTPS redirect
+ports:
+  web:
+    redirectTo:
+      port: websecure
+  websecure:
+    tls:
+      enabled: true
+
+# LoadBalancer: k3d forwards :443 → host; MetalLB for prod/staging
+service:
+  type: LoadBalancer
+
+logs:
+  general:
+    level: INFO
+  access:
+    enabled: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 300m
+    memory: 128Mi
+
+# TLS via cert-manager — no self-hosted ACME needed
+persistence:
+  enabled: false
+
+metrics:
+  prometheus:
+    enabled: true

@@ -5,6 +5,12 @@
     app_name: cert-manager
     app_timeout: 300
 
+- name: "Wave 0: traefik"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: traefik
+    app_timeout: 180
+
 - name: "Wave 1: vault"
   ansible.builtin.include_tasks: wait-for-app.yml
   vars:
@@ -28,6 +34,12 @@
   vars:
     app_name: vault-init
     app_timeout: 360
+
+- name: "Wave 2: traefik-config"
+  ansible.builtin.include_tasks: wait-for-app.yml
+  vars:
+    app_name: traefik-config
+    app_timeout: 120
 
 - name: "Wave 3: vault-config-operator"
   ansible.builtin.include_tasks: wait-for-app.yml

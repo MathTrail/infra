@@ -1,0 +1,34 @@
+{{- if .Values.deploy }}
+# Traefik — single entry point with TLS, rate limiting and circuit breaker.
+# wave 0: parallel with cert-manager, neither depends on the other.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mathtrail
+  sources:
+    - repoURL: https://MathTrail.github.io/charts/charts
+      chart: traefik
+      targetRevision: ">=0.0.0"
+      helm:
+        valueFiles:
+          - $values/apps/traefik/helm-values.yaml
+    - repoURL: https://github.com/MathTrail/infra
+      targetRevision: {{ .Values.gitBranch }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}

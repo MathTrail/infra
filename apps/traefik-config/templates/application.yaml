@@ -1,0 +1,28 @@
+{{- if .Values.deploy }}
+# Traefik Middlewares (rate limit, circuit breaker, security headers, ServersTransport).
+# wave 2: mathtrail-internal-ca-issuer is ready by this point (cert-manager-config wave 2).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mathtrail
+  source:
+    repoURL: https://github.com/MathTrail/infra
+    targetRevision: {{ .Values.gitBranch }}
+    path: apps/traefik-config/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}
