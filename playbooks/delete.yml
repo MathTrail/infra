@@ -95,6 +95,19 @@
       when: item.path | basename != 'vault-config'
       ignore_errors: true
 
+    # Phase 3a: Strip ArgoCD hook-finalizers from ServiceAccounts
+    # The VSO pre-bootstrap step creates a SA that ArgoCD marks with
+    # argocd.argoproj.io/hook-finalizer — this must be removed before namespace deletion.
+    - name: Strip ArgoCD hook-finalizer from vault-secrets-operator ServiceAccounts
+      ansible.builtin.shell: |
+        for sa in $(kubectl get sa -n vault-secrets-operator \
+          --no-headers -o custom-columns=':metadata.name' 2>/dev/null); do
+          kubectl patch sa "$sa" -n vault-secrets-operator \
+            --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+        done
+      changed_when: false
+      ignore_errors: true
+
     # Phase 3: Delete workload namespaces and force-finalize if stuck
     - name: Delete workload namespaces
       kubernetes.core.k8s:
