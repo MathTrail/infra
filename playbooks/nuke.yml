@@ -9,6 +9,16 @@
     argocd_namespace: argocd
 
   tasks:
+    - name: Strip finalizers from all remaining Application CRs
+      ansible.builtin.shell: |
+        for app in $(kubectl get application -n argocd \
+          --no-headers -o custom-columns=':metadata.name' 2>/dev/null); do
+          kubectl patch application "$app" -n argocd \
+            --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+        done
+      changed_when: false
+      ignore_errors: true
+
     - name: Uninstall ArgoCD Helm release
       kubernetes.core.helm:
         name: argocd
