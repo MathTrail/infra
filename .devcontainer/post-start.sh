@@ -15,6 +15,8 @@ if sudo test -f "$KUBECONFIG_SRC"; then
     sudo install -o vscode -g vscode -m 600 "$KUBECONFIG_SRC" /home/vscode/.kube/config
     # k3d uses 0.0.0.0 on Linux host, but from inside a container the host is reached via host.docker.internal
     sed -i 's|https://0.0.0.0:|https://host.docker.internal:|g' /home/vscode/.kube/config
+    # TLS cert doesn't include host.docker.internal SAN — replace CA data with insecure flag
+    sed -i 's/certificate-authority-data:.*/insecure-skip-tls-verify: true/' /home/vscode/.kube/config
     echo "Kubeconfig ready"
 else
     echo "Warning: kubeconfig not found at $KUBECONFIG_SRC"
