@@ -53,6 +53,50 @@
     app_name: vault-config
     app_timeout: 360
 
+# VSO chart has a pre-delete hook (pdcc-* Job) that ArgoCD creates on every sync.
+# The job needs the controller-manager SA to run --uninstall (cleans up VaultConnections).
+# Pre-create the namespace and SA so the hook can complete and self-delete before
+# the main sync proceeds.
+- name: "Wave 4: pre-create VSO namespace and SA for pre-delete hook"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      - apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: vault-secrets-operator
+      - apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: vault-secrets-operator-controller-manager
+          namespace: vault-secrets-operator
+
+- name: "Wave 4: wait for VSO pre-delete hook to complete and self-delete"
+  ansible.builtin.shell: |
+    set -e
+    for i in $(seq 1 30); do
+      JOB=$(kubectl get job -n vault-secrets-operator -l app.kubernetes.io/name=vault-secrets-operator \
+        -o jsonpath='{.items[?(@.metadata.annotations.helm\.sh/hook=="pre-delete")].metadata.name}' 2>/dev/null || true)
+      if [ -z "$JOB" ]; then
+        echo "No pre-delete job found, proceeding"
+        exit 0
+      fi
+      STATUS=$(kubectl get job "$JOB" -n vault-secrets-operator -o jsonpath='{.status.conditions[0].type}' 2>/dev/null || true)
+      if [ "$STATUS" = "Complete" ]; then
+        echo "Pre-delete job completed"
+        exit 0
+      fi
+      echo "Waiting for pre-delete job $JOB (status: $STATUS)... attempt $i"
+      sleep 5
+    done
+    echo "Pre-delete job did not complete in time, deleting it"
+    kubectl delete job -n vault-secrets-operator \
+      $(kubectl get job -n vault-secrets-operator \
+        -o jsonpath='{.items[?(@.metadata.annotations.helm\.sh/hook=="pre-delete")].metadata.name}' 2>/dev/null) \
+      --ignore-not-found
+  changed_when: false
+  ignore_errors: true
+
 - name: "Wave 4: vault-secrets-operator"
   ansible.builtin.include_tasks: wait-for-app.yml
   vars:
