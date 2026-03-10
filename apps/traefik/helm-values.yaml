@@ -1,13 +1,14 @@
 deployment:
   replicas: 1    # override to 2 for prod HA
 
-# HTTP → HTTPS redirect (Traefik v3 chart v34+ syntax)
+# HTTP → HTTPS redirect (Traefik chart v34+)
 ports:
   web:
-    redirections:
-      entryPoint:
-        to: websecure
-        scheme: https
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
 
 # LoadBalancer: k3d forwards :443 → host; MetalLB for prod/staging
 service:
