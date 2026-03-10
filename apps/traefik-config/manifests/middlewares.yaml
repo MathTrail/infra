@@ -59,15 +59,13 @@ spec:
     browserXssFilter: true
 
 ---
-# Connection timeouts to Oathkeeper (dialTimeout 5s, response 10s)
+# Connection timeouts to Oathkeeper (Traefik v3: timeouts only inside forwardingTimeouts)
 apiVersion: traefik.io/v1alpha1
 kind: ServersTransport
 metadata:
   name: oathkeeper-transport
   namespace: kube-system
 spec:
-  dialTimeout: 5s
-  responseHeaderTimeout: 10s
   forwardingTimeouts:
     dialTimeout: 5s
     responseHeaderTimeout: 10s
