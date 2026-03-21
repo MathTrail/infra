@@ -60,6 +60,36 @@ spec:
   tokenTTL: 3600
 
 ---
+# Debezium role — VSO syncs Debezium replication credentials from Vault KV.
+# Bound to debezium-connect SA in streaming namespace.
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: KubernetesAuthEngineRole
+metadata:
+  name: debezium-role
+  namespace: vault-config-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  connection:
+    address: http://vault.vault.svc.cluster.local:8200
+    tLSConfig:
+      skipVerify: true
+  authentication:
+    path: kubernetes
+    role: vco-admin
+    serviceAccount:
+      name: controller-manager
+  path: kubernetes
+  policies:
+    - debezium-policy
+  targetServiceAccounts:
+    - debezium-connect
+  targetNamespaces:
+    targetNamespaces:
+      - streaming
+  tokenTTL: 3600
+
+---
 # App-reader role — transitional: any SA in mathtrail ns can read DB + KV secrets.
 # Kept alive so existing direct Vault HTTP code continues to work during migration.
 # Remove after all services are on VSO.
