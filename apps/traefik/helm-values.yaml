@@ -1,6 +1,10 @@
 deployment:
   replicas: 1    # override to 2 for prod HA
 
+providers:
+  kubernetesCRD:
+    allowExternalNameServices: true
+
 # HTTP → HTTPS redirect (Traefik chart v34+)
 ports:
   web:
