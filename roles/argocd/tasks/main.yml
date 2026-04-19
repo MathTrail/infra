@@ -36,6 +36,14 @@
     name: "{{ argocd_namespace }}"
     state: present
 
+- name: Check if argocd-redis Secret already exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: argocd-redis
+    namespace: "{{ argocd_namespace }}"
+  register: _argocd_redis_secret
+
 - name: Pre-create argocd-redis Secret (skips quay.io pull for secret-init Job)
   kubernetes.core.k8s:
     definition:
@@ -48,6 +56,7 @@
       data:
         auth: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') | b64encode }}"
     state: present
+  when: _argocd_redis_secret.resources | length == 0
 
 - name: Install ArgoCD via Helm
   kubernetes.core.helm:
@@ -63,6 +72,33 @@
         insecure: true
       redisSecretInit:
         enabled: false
+      configs:
+        cm:
+          url: "https://argocd.mathtrail.localhost"
+          oidc.config: |
+            name: MathTrail
+            issuer: https://mathtrail.localhost
+            clientID: argocd
+            clientSecret: argocd-oidc-local
+            requestedScopes:
+              - openid
+              - profile
+              - email
+            rootCA: |
+              -----BEGIN CERTIFICATE-----
+              MIIBhTCCASqgAwIBAgIUE6XcuC6TIJd6zDipGzpmOdDUDWMwCgYIKoZIzj0EAwIw
+              IDEeMBwGA1UEAxMVbWF0aHRyYWlsLWludGVybmFsLWNhMB4XDTI2MDQxODE5NTk0
+              OVoXDTM2MDQxNTE5NTk0OVowIDEeMBwGA1UEAxMVbWF0aHRyYWlsLWludGVybmFs
+              LWNhMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhXQO/VyBorSgfVGNAtOln6vt
+              MFdBko0FROFUt87kAcAfq22fiH53C9AczmUvwfc5BHzHt5ngbr1HlvNO4VYkaqNC
+              MEAwDgYDVR0PAQH/BAQDAgKkMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFEoe
+              lz9HZs7FL35kQ/WUb/X9yxjSMAoGCCqGSM49BAMCA0kAMEYCIQCVmQLM7TkSLurC
+              SIakz2vsVYVTW8QANB+YkK1n38+YagIhAJY1hTdQbQvYn6QQMMVkDTcyEFbcH+DE
+              XiL1pZnTMu1F
+              -----END CERTIFICATE-----
+        rbac:
+          policy.default: "role:admin"
+          scopes: "[email]"
 
 - name: Apply AppProject mathtrail
   kubernetes.core.k8s:
